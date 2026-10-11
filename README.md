@@ -1,6 +1,6 @@
 # Benny’s Motors · Gestión del taller
 
-Sistema interno de Benny’s Motors para registrar ventas, consultar clientes frecuentes y controlar comisiones, gastos y actividad. Acceso exclusivo de administrador y empleados mediante Supabase. Interfaz de escritorio y móvil con tema de Halloween, pantalla de carga y panel de inicio. HTML, CSS y JavaScript estáticos, preparados para GitHub Pages.
+Sistema interno de Benny’s Motors para registrar ventas, consultar clientes frecuentes y controlar comisiones, gastos y actividad. Acceso por usuario y contraseña, con administrador y empleados mediante Supabase. No solicita correo electrónico. Interfaz de escritorio y móvil con tema de Halloween, pantalla de carga y panel de inicio. HTML, CSS y JavaScript estáticos, preparados para GitHub Pages.
 
 ## Usar
 
@@ -19,9 +19,10 @@ No necesita servidor, variables de entorno de GitHub ni proceso de compilación 
 
 1. Ejecuta `supabase/setup.sql` en el SQL Editor del proyecto de Supabase. Guarda el `codigo_inicial_admin` que devuelve; no lo subas al repositorio ni lo compartas con empleados. **Si ya lo ejecutaste, no necesitas repetirlo.**
 2. Ejecuta `supabase/upgrade-profesional.sql` para habilitar gastos, auditoría y motivos de anulación. Es una actualización aditiva y repetible: conserva usuarios, tarifas y ventas. Si ya está instalada, no necesitas repetirla.
-3. En la pantalla de acceso pulsa **Solicitar acceso**, indica tu nombre, correo y contraseña. Confirma el correo si Supabase lo solicita y vuelve a iniciar sesión.
-4. Introduce el código inicial para activar tu administrador. El código se usa una vez.
-5. Cada empleado crea su propia cuenta. Desde **Equipo**, el administrador activa su acceso y asigna su comisión.
+3. Activa el acceso por usuario siguiendo [supabase/ACCESO-POR-USUARIO.md](supabase/ACCESO-POR-USUARIO.md): ejecuta `upgrade-usuarios.sql` y despliega la Edge Function `bennys-staff`.
+4. En la pantalla de acceso pulsa **Solicitar acceso** e indica nombre, usuario y contraseña. No se pide correo ni confirmación por correo.
+5. Introduce el código inicial para activar tu administrador. El código se usa una vez.
+6. Puedes crear mecánicos activos desde **Equipo → Crear mecánico**, o aprobar allí las solicitudes del personal y asignar su comisión.
 
 El administrador ve todas las órdenes, administra empleados y edita tarifas. Los empleados ven sus propias órdenes y tienen una comisión asignada. Una cuenta pendiente o inactiva no puede consultar ni registrar servicios.
 
@@ -29,7 +30,7 @@ El administrador ve todas las órdenes, administra empleados y edita tarifas. Lo
 
 - Inicio con ventas del período, ticket promedio, comisiones, margen del taller, evolución de ventas, métodos de pago y rendimiento por mecánico. Los gráficos y cifras utilizan registros reales.
 - Pantalla de carga durante la comprobación de sesión y lectura inicial de registros; sincronización posterior en segundo plano.
-- Acceso obligatorio, solicitud de cuenta y activación por administración.
+- Acceso obligatorio por usuario y contraseña. Administración crea mecánicos activos o aprueba solicitudes. Las cuentas anteriores mantienen su contraseña; el SQL devuelve su usuario asignado.
 - Tema Halloween en carbón y naranja, con murciélagos y telarañas discretos en el acceso. Transiciones de paneles, gráficos, modales y botones; respeta la preferencia de movimiento reducido.
 - 18 servicios del tarifario enviado por el usuario, en euros: 7 de taller, 2 motores, 3 tracciones, 3 neumáticos y 3 extras.
 - Búsqueda, categorías, cantidades y selecciones rápidas.
@@ -86,7 +87,9 @@ Confirmar venta no verifica pagos de FiveM: el mecánico comprueba el pago dentr
 
 Para las pruebas SQL instala la dependencia de desarrollo con `npm ci --prefix tests` y ejecuta `npm test`. Usan PostgreSQL local mediante PGlite, sin tocar el proyecto real: instalación, activación por código, RLS, roles, cantidades, tarifas, cálculos, reintentos, anulación, gastos y auditoría; también comprueban que repetir la actualización conserva datos. `npm run test:core` comprueba los cálculos sin dependencias.
 
-`npm run test:browser` usa el SDK real con respuestas HTTP simuladas, sin crear usuarios ni ventas en producción. Comprueba acceso, equipo, cobro, reintentos, aislamiento de cuentas, informes, filtros, gastos, auditoría, carga real, movimiento reducido y tamaños de 360 a 1920 píxeles. En otro equipo establece `PLAYWRIGHT_PATH` al módulo de Playwright y `EDGE_PATH` al ejecutable de un navegador Chromium. Los resultados están en `tests/browser-results.json`.
+`tests/staff.test.mjs` comprueba la función de acceso: login, creación solo por administradores, solicitudes pendientes, límites y limpieza ante fallos.
+
+`npm run test:browser` usa el SDK real con respuestas HTTP simuladas, sin crear usuarios ni ventas en producción. Comprueba acceso, equipo, cobro, reintentos, aislamiento de cuentas, informes, filtros, gastos, auditoría, carga real, creación de mecánicos, solicitudes por usuario, movimiento reducido y tamaños de 360 a 1920 píxeles. En otro equipo establece `PLAYWRIGHT_PATH` al módulo de Playwright y `EDGE_PATH` al ejecutable de un navegador Chromium. Los resultados están en `tests/browser-results.json`.
 
 ## Recursos visuales
 

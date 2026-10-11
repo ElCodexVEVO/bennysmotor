@@ -5,7 +5,7 @@ import {PGlite} from '@electric-sql/pglite';
 const sql=readFileSync(new URL('../supabase/setup.sql',import.meta.url),'utf8');
 const admin='11111111-1111-4111-8111-111111111111',employee='22222222-2222-4222-8222-222222222222',other='33333333-3333-4333-8333-333333333333';
 test('Supabase: instalación, permisos, cálculos y aislamiento de empleados',async()=>{
-  const db=new PGlite();await db.exec(`create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb default '{}');create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth,public to authenticated,anon;grant execute on function auth.uid() to authenticated,anon;insert into auth.users values('${admin}','admin@example.invalid','{"display_name":"Admin"}'),('${employee}','empleado@example.invalid','{"display_name":"Mecánico"}'),('${other}','otro@example.invalid','{"display_name":"Otro"}');`);
+  const db=new PGlite();await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb default '{}');create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth,public to authenticated,anon;grant execute on function auth.uid() to authenticated,anon;insert into auth.users values('${admin}','admin@example.invalid','{"display_name":"Admin"}'),('${employee}','empleado@example.invalid','{"display_name":"Mecánico"}'),('${other}','otro@example.invalid','{"display_name":"Otro"}');`);
   const results=await db.exec(sql),code=results.at(-1).rows[0].codigo_inicial_admin;
   assert.equal(code.length,64);assert.equal((await db.query('select * from bennys_services')).rows.length,18);
   const as=async(id)=>db.exec(`reset role;set role authenticated;set request.jwt.claim.sub='${id}';`);
@@ -55,5 +55,15 @@ test('Supabase: instalación, permisos, cálculos y aislamiento de empleados',as
   await db.exec('reset role;');await db.exec(readFileSync(new URL('../supabase/upgrade-profesional.sql',import.meta.url),'utf8'));
   assert.equal((await db.query('select * from bennys_expenses')).rows.length,1);
   assert.equal((await db.query('select * from bennys_audit')).rows.length,audit.length);
+  const usernameSql=readFileSync(new URL('../supabase/upgrade-usuarios.sql',import.meta.url),'utf8');
+  await db.exec(usernameSql);const mapped=(await db.query('select id,username from bennys_profiles order by id')).rows;
+  assert.equal(mapped.length,3);assert.equal(mapped.find(p=>p.id===admin).username,'admin');assert.equal(new Set(mapped.map(p=>p.username)).size,3);
+  await db.exec(usernameSql);assert.deepEqual((await db.query('select id,username from bennys_profiles order by id')).rows,mapped);
+  assert.equal((await db.query('select * from bennys_orders')).rows.length,2);
+  await db.exec('set role anon;');await assert.rejects(db.query('select * from bennys_access_limits'));await assert.rejects(db.query("select bennys_access_limit('fixture',60,2)"));
+  await db.exec('reset role;set role service_role;');
+  for(const expected of [true,true,false])assert.equal((await db.query("select bennys_access_limit('fixture',60,2) as allowed")).rows[0].allowed,expected);
+  await db.exec('reset role;');await db.query("update bennys_access_limits set window_start=now()-interval '2 minutes'");
+  await db.exec('set role service_role;');assert.equal((await db.query("select bennys_access_limit('fixture',60,2) as allowed")).rows[0].allowed,true);
   await db.close();
 });

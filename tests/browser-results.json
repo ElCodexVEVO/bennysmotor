@@ -8,6 +8,7 @@
     "Registro remoto y reintento sin cobro duplicado",
     "Clientes frecuentes persisten y se reutilizan por nombre",
     "Activación de empleados y comisión asignada",
+    "Administración crea mecánicos activos sin correo",
     "Tarifas compartidas editables por administrador",
     "Empleado: historial propio y tarifas de solo lectura",
     "Ventas del empleado con su comisión",
@@ -22,6 +23,7 @@
     "Activación inicial protegida por código",
     "Diseño sin desbordamientos de 360 a 1920 px",
     "Animaciones respetan la preferencia de movimiento reducido",
+    "Solicitud por usuario pendiente hasta aprobación de administración",
     "Sin errores JavaScript"
   ],
   "errors": []

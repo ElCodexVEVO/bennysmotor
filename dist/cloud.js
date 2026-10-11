@@ -50,8 +50,14 @@ export class BennysCloud {
     const [expenses,audit]=profile.role==='admin'?await Promise.all([this.pages('bennys_expenses','created_at'),this.pages('bennys_audit','id')]):[[],[]];
     return {proReady:true,expenses,audit};
   }
-  async signIn(email,password){const {error}=await this.client.auth.signInWithPassword({email,password});if(error)throw error;}
-  async signUp(name,email,password){const {data,error}=await this.client.auth.signUp({email,password,options:{data:{display_name:name},emailRedirectTo:location.protocol==='https:'?location.origin+location.pathname:undefined}});if(error)throw error;return data;}
+  async staff(action,values){
+    const {data,error}=await this.client.functions.invoke('bennys-staff',{body:{action,...values}});
+    if(error){let message='El acceso por usuario no está disponible. Contacta a administración.';if(error.context?.json){try{message=(await error.context.json()).error||message;}catch{}}throw Error(message);}
+    if(data?.error)throw Error(data.error);return data;
+  }
+  async signIn(username,password){const data=await this.staff('login',{username,password});if(!data?.session?.access_token||!data?.session?.refresh_token)throw Error('No se pudo iniciar la sesión.');const {error}=await this.client.auth.setSession({access_token:data.session.access_token,refresh_token:data.session.refresh_token});if(error)throw error;}
+  async signUp(name,username,password){return this.staff('request_access',{name,username,password});}
+  async createEmployee(values){if(!this.isAdmin)throw Error('Solo administración puede crear mecánicos.');return this.staff('create_employee',values);}
   async signOut(){const {error}=await this.client.auth.signOut({scope:'local'});if(error)throw error;}
   async claimAdmin(code){await this.rpc('bennys_claim_admin',{p_code:code});await this.load();}
   async createOrder(order){
