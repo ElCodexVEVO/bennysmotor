@@ -19,6 +19,14 @@ export class BennysCloud {
   }
   get isAdmin(){return this.ready&&this.profile?.active&&this.profile.role==='admin';}
   get isActive(){return this.ready&&this.profile?.active;}
+  // Orden personal de los módulos del inicio: vive en los metadatos de la propia cuenta (Supabase Auth), sin tablas ni SQL nuevos.
+  get homeLayout(){return this.user?.user_metadata?.bennys_home_layout||null;}
+  async saveHomeLayout(value){
+    const {data,error}=await this.client.auth.updateUser({data:{bennys_home_layout:value}});
+    if(error)throw error;
+    if(data?.user)this.user=data.user;
+    return value;
+  }
   async rpc(name,args={}){const {data,error}=await this.client.rpc(name,args);if(error)throw error;return Array.isArray(data)&&data.length===1?data[0]:data;}
   async restore(session){
     const user=session?.user||null;this.initialized=true;

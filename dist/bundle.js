@@ -137,6 +137,10 @@ const ICONS={
   moon:'<path d="M19 15.500A8 8 0 0 1 8.500 5a8 8 0 1 0 10.500 10.500Z"/><path d="M17 3v4m-2-2h4m1 4v2m-1-1h2"/>',
   pumpkin:'<path d="M12 8c-5 0-9 2.600-9 6.200S7 20.500 12 20.500s9-2.700 9-6.300S17 8 12 8Z"/><path d="M12 8c-2.600 1.400-3.800 3.900-3.800 6.200s1.200 4.700 3.800 6.300M12 8c2.600 1.400 3.800 3.900 3.800 6.200s-1.200 4.700-3.800 6.300"/><path d="M12 8V4.500M12 4.500c1 0 2.100-.6 2.700-1.600"/>',
   filter:'<path d="M3 5h18l-7 8v6l-4 2v-8L3 5Z"/>',
+  grip:'<g fill="currentColor" stroke="none"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></g>',
+  chevronup:'<path d="m6 15 6-6 6 6"/>',
+  chevrondown:'<path d="m6 9 6 6 6-6"/>',
+  layout:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
   receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3ZM9 8h6M9 12h6"/>'
 };
 const icon=n=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]||ICONS.wrench}</svg>`;
@@ -210,6 +214,14 @@ class BennysCloud {
   }
   get isAdmin(){return this.ready&&this.profile?.active&&this.profile.role==='admin';}
   get isActive(){return this.ready&&this.profile?.active;}
+  // Orden personal de los módulos del inicio: vive en los metadatos de la propia cuenta (Supabase Auth), sin tablas ni SQL nuevos.
+  get homeLayout(){return this.user?.user_metadata?.bennys_home_layout||null;}
+  async saveHomeLayout(value){
+    const {data,error}=await this.client.auth.updateUser({data:{bennys_home_layout:value}});
+    if(error)throw error;
+    if(data?.user)this.user=data.user;
+    return value;
+  }
   async rpc(name,args={}){const {data,error}=await this.client.rpc(name,args);if(error)throw error;return Array.isArray(data)&&data.length===1?data[0]:data;}
   async restore(session){
     const user=session?.user||null;this.initialized=true;
@@ -265,6 +277,212 @@ class BennysCloud {
 }
 
 
+// Módulos del panel de inicio. `span` es el ancho en una cuadrícula de 12 columnas (en pantallas estrechas todos ocupan el ancho completo).
+// El orden de esta lista es el orden original; cada persona puede reordenarlos y su orden se guarda en su cuenta.
+const HOME_MODULES=Object.freeze([
+  {id:'kpis',title:'Métricas',span:12},
+  {id:'chart',title:'Evolución de las ventas',span:8},
+  {id:'clients',title:'Clientes frecuentes',span:4},
+  {id:'recent',title:'Ventas recientes',span:8},
+  {id:'activity',title:'Actividad reciente',span:4},
+  {id:'mine',title:'Mi rendimiento',span:4},
+  {id:'payments',title:'Métodos de pago',span:8},
+  {id:'team',title:'Rendimiento del equipo',span:4}
+]);
+const HOME_META=Object.fromEntries(HOME_MODULES.map(m=>[m.id,m]));
+const LAYOUT_VERSION=1;
+const homeModuleMeta=id=>HOME_META[id];
+
+/**
+ * Orden personal de los módulos del inicio.
+ *  - Se guarda por usuario: en los metadatos de su cuenta de Supabase Auth (acompaña a la persona en cualquier equipo; no requiere SQL)
+ *    y en este navegador como respaldo. Si ambos existen, gana el más reciente.
+ *  - Solo se guarda cuando la persona pulsa «Guardar mi orden». Quien no personaliza ve siempre el orden original.
+ *  - El modo de edición admite arrastrar por el asa (ratón y táctil) y también flechas del teclado y botones Mover antes / después.
+ */
+class HomeLayout{
+  constructor({getCloud,toast,rerender}){
+    Object.assign(this,{getCloud,toast,rerender});
+    this.editing=false;this.dragging=false;this.available=[];this.drag=null;this.snapshot=[];
+  }
+  get cloud(){return this.getCloud();}
+  el(id){return document.getElementById(id);}
+  grid(){return this.el('module-grid');}
+  storageKey(){const id=this.cloud?.user?.id;return id?'bennys-home-layout:'+id:null;}
+
+  /** Diseño guardado y válido más reciente (local o de la cuenta), o null. */
+  stored(){
+    const valid=value=>value&&value.v===LAYOUT_VERSION&&Array.isArray(value.order)&&value.order.every(id=>typeof id==='string')?value:null;
+    let local=null;
+    try{const key=this.storageKey();if(key)local=JSON.parse(localStorage.getItem(key));}catch{}
+    const a=valid(local),b=valid(this.cloud?.homeLayout);
+    if(a&&b)return Date.parse(a.at)>=Date.parse(b.at)?a:b;
+    return a||b;
+  }
+  /** Ordena los módulos disponibles según el diseño guardado; los que no figuran en él (por ejemplo, módulos nuevos) van al final. */
+  order(available){
+    const saved=(this.stored()?.order||[]).filter((id,i,all)=>available.includes(id)&&all.indexOf(id)===i);
+    return [...saved,...available.filter(id=>!saved.includes(id))];
+  }
+  currentOrder(grid=this.grid()){return grid?[...grid.children].map(m=>m.dataset.module):[];}
+
+  // ─── Edición ───
+  init(){
+    this.button=this.el('layout-edit');this.bar=this.el('layout-bar');
+    this.button.onclick=()=>this.editing?this.cancel():this.start();
+    this.el('layout-save').onclick=()=>this.save();
+    this.el('layout-cancel').onclick=()=>this.cancel();
+    this.el('layout-reset').onclick=()=>this.reset();
+    document.addEventListener('pointerdown',event=>this.onPointerDown(event));
+    document.addEventListener('click',event=>{
+      const move=event.target.closest?.('.module-up,.module-down');
+      if(move&&this.editing&&this.grid()?.contains(move)){event.preventDefault();this.move(move.closest('.module'),move.classList.contains('module-up')?-1:1,move.classList.contains('module-up')?'.module-up':'.module-down');}
+    });
+    document.addEventListener('keydown',event=>this.onKeyDown(event));
+  }
+  /** Llamado tras dibujar el inicio: conserva el modo de edición si estaba activo. */
+  mount(available){
+    this.available=available;
+    if(!this.editing)return;
+    const grid=this.grid();if(grid)this.decorate(grid);
+  }
+  start(){
+    const grid=this.grid();if(!grid||!this.cloud?.isActive)return;
+    this.editing=true;this.snapshot=this.currentOrder(grid);
+    this.el('view-dashboard').classList.add('home-editing');this.bar.hidden=false;
+    this.button.setAttribute('aria-pressed','true');
+    this.decorate(grid);
+    this.announce('Modo personalizar activado. Arrastra los módulos por su asa o usa las flechas del teclado sobre el asa.');
+    grid.querySelector('.module-grip')?.focus({preventScroll:true});
+  }
+  stop(){
+    this.editing=false;this.dragging=false;this.cleanupDrag();
+    this.el('view-dashboard').classList.remove('home-editing');this.bar.hidden=true;
+    this.button.setAttribute('aria-pressed','false');
+  }
+  /** Descarta los cambios no guardados. */
+  cancel(){
+    if(!this.editing)return;
+    this.stop();this.rerender();
+  }
+  /** Vuelve al orden original (queda sin guardar hasta pulsar «Guardar mi orden»). */
+  reset(){
+    const grid=this.grid();if(!grid)return;
+    const first=this.rects(grid);
+    for(const id of this.available){const module=grid.querySelector(`[data-module="${id}"]`);if(module)grid.append(module);}
+    this.flip(grid,first);
+    this.announce('Orden original restaurado. Pulsa Guardar mi orden para conservarlo.');
+  }
+  async save(){
+    const grid=this.grid();if(!grid)return;
+    const order=this.currentOrder(grid),original=this.available.join(),isOriginal=order.join()===original;
+    const value=isOriginal?null:{v:LAYOUT_VERSION,order,at:new Date().toISOString()};
+    try{const key=this.storageKey();if(key){if(value)localStorage.setItem(key,JSON.stringify(value));else localStorage.removeItem(key);}}catch{}
+    let remote=true;
+    try{await this.cloud.saveHomeLayout(value);}catch{remote=false;}
+    this.stop();this.rerender();
+    this.toast(isOriginal?'Orden original restaurado.':remote?'Orden guardado en tu cuenta. Lo verás igual en cualquier equipo.':'Orden guardado en este equipo. No se pudo guardar en tu cuenta; vuelve a intentarlo más tarde.');
+  }
+
+  // ─── Asas, botones y teclado ───
+  decorate(grid){
+    for(const module of grid.children){
+      if(module.querySelector(':scope>.module-tools'))continue;
+      const title=esc(module.dataset.title||'módulo');
+      module.insertAdjacentHTML('afterbegin',`<div class="module-tools" role="group" aria-label="${title}"><button type="button" class="module-grip" aria-label="Mover ${title}: arrastra o usa las flechas del teclado">${icon('grip')}</button><span class="module-title">${title}</span><button type="button" class="module-up" aria-label="Mover ${title} antes">${icon('chevronup')}</button><button type="button" class="module-down" aria-label="Mover ${title} después">${icon('chevrondown')}</button></div>`);
+    }
+  }
+  announce(text){const live=this.el('layout-live');if(live)live.textContent=text;}
+  rects(grid){return new Map([...grid.children].map(m=>[m,m.getBoundingClientRect()]));}
+  /** Anima el cambio de posición de los módulos (FLIP). Con movimiento reducido no anima. */
+  flip(grid,before){
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+    for(const module of grid.children){
+      const from=before.get(module);if(!from)continue;const to=module.getBoundingClientRect(),dx=from.left-to.left,dy=from.top-to.top;
+      if(Math.abs(dx)>1||Math.abs(dy)>1)module.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:240,easing:'cubic-bezier(.2,.7,.2,1)'});
+    }
+  }
+  move(module,delta,focusSelector='.module-grip'){
+    const grid=module?.parentElement;if(!grid)return false;
+    const items=[...grid.children],from=items.indexOf(module),to=Math.max(0,Math.min(items.length-1,from+delta));
+    if(from===to){this.announce(`${module.dataset.title}: ya está ${delta<0?'el primero':'el último'}.`);return false;}
+    const first=this.rects(grid);
+    grid.insertBefore(module,delta<0?items[to]:items[to].nextElementSibling);
+    this.flip(grid,first);
+    module.querySelector(focusSelector)?.focus({preventScroll:true});
+    this.announce(`${module.dataset.title}: posición ${to+1} de ${items.length}.`);
+    return true;
+  }
+  onKeyDown(event){
+    const grip=event.target.closest?.('.module-grip');
+    if(!grip||!this.editing)return;
+    const module=grip.closest('.module'),keys={ArrowUp:-1,ArrowLeft:-1,ArrowDown:1,ArrowRight:1};
+    if(event.key in keys){event.preventDefault();this.move(module,keys[event.key]);}
+    else if(event.key==='Home'){event.preventDefault();this.move(module,-this.currentOrder().indexOf(module.dataset.module));}
+    else if(event.key==='End'){event.preventDefault();this.move(module,this.currentOrder().length);}
+  }
+
+  // ─── Arrastrar (ratón y táctil) ───
+  onPointerDown(event){
+    const grip=event.target.closest?.('.module-grip');
+    if(!grip||!this.editing||(event.pointerType==='mouse'&&event.button!==0))return;
+    const module=grip.closest('.module');if(!module||!this.grid()?.contains(module))return;
+    event.preventDefault();
+    const chip=document.createElement('div');chip.className='drag-chip';chip.textContent=module.dataset.title;chip.setAttribute('aria-hidden','true');document.body.append(chip);
+    this.drag={module,grip,chip,pointerId:event.pointerId,target:null,before:true,x:event.clientX,y:event.clientY};
+    this.dragging=true;module.classList.add('dragging');
+    try{grip.setPointerCapture(event.pointerId);}catch{}
+    this.moveChip();
+    this.dragMove=e=>this.onPointerMove(e);this.dragEnd=e=>this.onPointerUp(e);this.dragCancel=()=>this.cleanupDrag();
+    grip.addEventListener('pointermove',this.dragMove);grip.addEventListener('pointerup',this.dragEnd);grip.addEventListener('pointercancel',this.dragCancel);
+    this.scrollLoop();
+  }
+  moveChip(){const {chip,x,y}=this.drag;chip.style.left=x+'px';chip.style.top=y+'px';}
+  onPointerMove(event){
+    const drag=this.drag;if(!drag)return;
+    drag.x=event.clientX;drag.y=event.clientY;this.moveChip();
+    const grid=this.grid(),found=document.elementsFromPoint(drag.x,drag.y).map(el=>el.closest?.('.module')).find(m=>m&&m!==drag.module&&grid.contains(m));
+    if(!found)return;
+    const rect=found.getBoundingClientRect(),horizontal=rect.width<grid.getBoundingClientRect().width*0.7;
+    drag.before=horizontal?drag.x<rect.left+rect.width/2:drag.y<rect.top+rect.height/2;
+    if(drag.target!==found)drag.target?.classList.remove('drop-before','drop-after');
+    drag.target=found;found.dataset.axis=horizontal?'x':'y';
+    found.classList.toggle('drop-before',drag.before);found.classList.toggle('drop-after',!drag.before);
+  }
+  onPointerUp(){
+    const drag=this.drag;if(!drag)return;
+    const {module,target,before,grip}=drag,grid=this.grid();
+    this.cleanupDrag();
+    if(target&&grid&&target!==module){
+      const first=this.rects(grid);
+      grid.insertBefore(module,before?target:target.nextElementSibling);
+      this.flip(grid,first);
+      this.announce(`${module.dataset.title}: posición ${this.currentOrder().indexOf(module.dataset.module)+1} de ${this.currentOrder().length}.`);
+    }
+    (module.querySelector('.module-grip')||grip)?.focus({preventScroll:true});
+  }
+  cleanupDrag(){
+    const drag=this.drag;this.dragging=false;
+    if(!drag)return;
+    drag.chip.remove();drag.module.classList.remove('dragging');
+    for(const m of this.grid()?.children||[])m.classList.remove('drop-before','drop-after');
+    drag.grip.removeEventListener('pointermove',this.dragMove);drag.grip.removeEventListener('pointerup',this.dragEnd);drag.grip.removeEventListener('pointercancel',this.dragCancel);
+    try{drag.grip.releasePointerCapture(drag.pointerId);}catch{}
+    this.drag=null;
+  }
+  /** Desplaza la página cuando se arrastra cerca del borde superior o inferior. */
+  scrollLoop(){
+    const tick=()=>{
+      const drag=this.drag;if(!drag)return;
+      const edge=90,y=drag.y;
+      if(y<edge)window.scrollBy(0,-Math.ceil((edge-y)/5));else if(y>innerHeight-edge)window.scrollBy(0,Math.ceil((y-(innerHeight-edge))/5));
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+}
+
+
 const stat=(label,value,note,glyph='chart',accent=false)=>`<article class="stat ${accent?'accent':''}"><span class="stat-icon">${icon(glyph)}</span><div class="stat-body"><span class="stat-label">${label}</span><strong>${value}</strong><small>${note}</small></div></article>`;
 const person=name=>`<div class="person-cell"><span class="person-initial">${esc(name.slice(0,1).toUpperCase())}</span><strong>${esc(name)}</strong></div>`;
 const empty=(text,glyph='clipboard')=>`<div class="empty-state"><span>${icon(glyph)}</span><h2>${text}</h2><p>Los datos aparecerán al registrar actividad en el taller.</p></div>`;
@@ -282,6 +500,7 @@ class ManagementPanel{
   period(id){return this.orders.filter(o=>inPeriod(o.date,this.el(id).value));}
   render(view){if(view==='dashboard')this.dashboard();if(view==='summary')this.commissions();if(view==='finance')this.finance();if(view==='audit')this.audit();}
   dashboard(){
+    if(this.layout?.dragging)return;
     const orders=this.period('dashboard-period'),m=salesMetrics(orders),admin=this.cloud?.isAdmin,staff=employeeMetrics(orders,this.cloud?.team);
     const periodValue=this.el('dashboard-period').value;
     this.el('dashboard-greeting').textContent=`${admin?'Resumen del taller':'Tus ventas y comisiones'} · ${this.getState().settings.mechanic||'Personal'}`;
@@ -295,7 +514,19 @@ class ManagementPanel{
     const performancePanel=`<section class="panel"><div class="panel-head"><h2>${admin?'Rendimiento del equipo':'Mi rendimiento'}</h2><span>Ventas cobradas</span></div><div class="panel-body">${staff.length?staff.slice(0,5).map(p=>`<div class="summary-row"><div>${person(p.name)}<small class="muted">${p.count} ${p.count===1?'venta':'ventas'}</small></div><strong>${euro(p.total)}</strong></div>`).join(''):'<p class="muted">Registra una venta para comenzar.</p>'}<p class="panel-note">${admin?'Consulta el desglose por empleado en Comisiones.':'Tu administrador gestiona el porcentaje de tu cuenta.'}</p></div></section>`;
     const activityPanel=`<section class="panel"><div class="panel-head"><h2>Actividad reciente</h2><button class="text-button" data-open-view="audit">Ver actividad <span data-icon="arrow"></span></button></div><div class="panel-body">${activity.length?`<ol class="timeline">${activity.map(row=>{const d=row.details||{},amount=d.amount!=null&&Number.isFinite(Number(d.amount))?(row.action.includes('gasto')?'−':'')+euro(Number(d.amount)):'';return `<li><span class="timeline-dot" aria-hidden="true"></span><div><strong>${esc(ACTIONS[row.action]||row.action)}</strong><small>${esc([d.client,d.label].filter(Boolean).join(' · ')||this.actor(row))}</small></div><span class="timeline-meta"><b>${amount}</b><small>${since(row.created_at)}</small></span></li>`;}).join('')}</ol>`:'<p class="muted">Aún no hay actividad registrada.</p>'}</div></section>`;
     const paymentsPanel=`<section class="panel"><div class="panel-head"><h2>Métodos de pago</h2><span>${m.count} ${m.count===1?'venta':'ventas'}</span></div><div class="panel-body">${payments.map(p=>`<div class="payment-row"><div><span>${p.name}</span><strong>${euro(p.total)}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${m.total?p.total/m.total*100:0}%"></div></div></div>`).join('')}<p class="panel-note">Solo ventas cobradas. Las anuladas conservan su historial y se excluyen de los totales.</p></div></section>`;
-    this.el('dashboard-content').innerHTML=`<div class="kpi-grid">${stat(admin?'Ventas del taller':'Mis ventas',euro(m.total),'Cobros después de descuentos','wallet',true)}${stat('Ventas cobradas',m.count,`Ticket promedio: ${euro(m.average)}`,'clipboard')}${stat('Comisiones generadas',euro(m.commission),'Sobre el margen positivo de cada venta','user')}${stat('Margen del taller',euro(m.net),'Después de piezas y comisiones; antes de gastos','chart')}</div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><div><h2>Evolución de las ventas</h2><p>${periodValue==='all'?'Gráfico de los últimos 30 días':'Distribución del período seleccionado'}</p></div><span>EUR</span></div><div class="panel-body">${chart}</div></section>${clientsPanel}</div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><div><h2>Ventas recientes</h2><p>Últimos movimientos del período</p></div><button class="text-button" data-open-view="orders">Ver todas <span data-icon="arrow"></span></button></div>${recent.length?`<div class="table-flush"><table class="compact-table"><thead><tr><th>Venta / Cliente</th><th>Mecánico</th><th class="num">Importe</th><th>Estado</th></tr></thead><tbody>${recent.map(o=>`<tr><td><button class="text-button" data-detail="${esc(o.id)}">${esc(o.folio)}</button><small>${esc(o.client)}</small></td><td>${esc(o.mechanic)}</td><td class="num">${euro(o.totals.total)}</td><td><span class="status-pill ${o.status==='cancelled'?'cancelled':''}">${o.status==='active'?'Cobrado':'Anulado'}</span></td></tr>`).join('')}</tbody></table></div>`:'<div class="chart-empty">Aún no hay ventas en este período.</div>'}</section>${admin?activityPanel:performancePanel}</div><div class="dashboard-grid${admin?'':' single'}">${paymentsPanel}${admin?performancePanel:''}</div>`;
+    const chartPanel=`<section class="panel"><div class="panel-head"><div><h2>Evolución de las ventas</h2><p>${periodValue==='all'?'Gráfico de los últimos 30 días':'Distribución del período seleccionado'}</p></div><span>EUR</span></div><div class="panel-body">${chart}</div></section>`;
+    const recentPanel=`<section class="panel"><div class="panel-head"><div><h2>Ventas recientes</h2><p>Últimos movimientos del período</p></div><button class="text-button" data-open-view="orders">Ver todas <span data-icon="arrow"></span></button></div>${recent.length?`<div class="table-flush"><table class="compact-table"><thead><tr><th>Venta / Cliente</th><th>Mecánico</th><th class="num">Importe</th><th>Estado</th></tr></thead><tbody>${recent.map(o=>`<tr><td><button class="text-button" data-detail="${esc(o.id)}">${esc(o.folio)}</button><small>${esc(o.client)}</small></td><td>${esc(o.mechanic)}</td><td class="num">${euro(o.totals.total)}</td><td><span class="status-pill ${o.status==='cancelled'?'cancelled':''}">${o.status==='active'?'Cobrado':'Anulado'}</span></td></tr>`).join('')}</tbody></table></div>`:'<div class="chart-empty">Aún no hay ventas en este período.</div>'}</section>`;
+    const kpiStrip=`<div class="kpi-grid">${stat(admin?'Ventas del taller':'Mis ventas',euro(m.total),'Cobros después de descuentos','wallet',true)}${stat('Ventas cobradas',m.count,`Ticket promedio: ${euro(m.average)}`,'clipboard')}${stat('Comisiones generadas',euro(m.commission),'Sobre el margen positivo de cada venta','user')}${stat('Margen del taller',euro(m.net),'Después de piezas y comisiones; antes de gastos','chart')}</div>`;
+    // Cada bloque es un módulo que la persona puede mover (ver layout.js). El orden guardado de cada cuenta decide cómo se muestran.
+    const mod=(id,html)=>{const meta=homeModuleMeta(id);return html.replace(/^<(\w+) class="([^"]*)"/,(match,tag,cls)=>`<${tag} class="${cls} module" data-module="${id}" data-title="${esc(meta.title)}" style="--span:${meta.span}"`);};
+    const modules={kpis:mod('kpis',kpiStrip),chart:mod('chart',chartPanel),clients:mod('clients',clientsPanel),recent:mod('recent',recentPanel),payments:mod('payments',paymentsPanel)};
+    if(admin){modules.activity=mod('activity',activityPanel);modules.team=mod('team',performancePanel);}else modules.mine=mod('mine',performancePanel);
+    const available=HOME_MODULES.map(m=>m.id).filter(id=>modules[id]);
+    // Mientras se personaliza, una sincronización conserva el orden que se está editando.
+    const live=this.layout.editing&&this.el('module-grid')?this.layout.currentOrder().filter(id=>available.includes(id)):null;
+    const order=live?[...live,...available.filter(id=>!live.includes(id))]:this.layout.order(available);
+    this.el('dashboard-content').innerHTML=`<div class="module-grid" id="module-grid">${order.map(id=>modules[id]).join('')}</div>`;
+    this.layout.mount(available);
     hydrate(this.el('dashboard-content'));
     // Las cifras que cambian por una sincronización o una venta nueva se resaltan un instante; el resto permanece quieto.
     const values=[...this.el('dashboard-content').querySelectorAll('.stat strong')],texts=values.map(n=>n.textContent),previous=this.lastKpi;
@@ -495,6 +726,7 @@ function selectClient(key){
 }
 function add(id){const service=state.catalog.find(i=>i.id===id);if(!service)return;const old=state.draft.items.find(i=>i.id===id),result=addToOrder(state.draft.items,service);state.draft.items=result.items;persist();refresh();if(result.replaced.length)toast(`${service.name} reemplazó ${result.replaced.map(i=>i.name).join(', ')}.`);else if(service.exclusive&&old)toast('Esta configuración ya está en la orden.');}
 function setView(view){
+  if(view!=='dashboard')homeLayout.cancel();
   if(['team','finance','audit'].includes(view)&&!cloud?.isAdmin)view='dashboard';
   currentView=view;document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id==='view-'+view));document.querySelectorAll('[data-view]').forEach(el=>{const on=el.dataset.view===view;el.classList.toggle('active',on);if(on)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});enterView(view);
   $('breadcrumb-current').textContent=({dashboard:'Inicio',calculator:'Nueva venta',orders:cloud?.isAdmin?'Ventas del taller':'Mis ventas',catalog:'Tarifario',clients:'Clientes frecuentes',summary:'Comisiones',finance:'Gastos y resultado',team:'Equipo',audit:'Actividad'})[view];$('mobile-total').classList.toggle('no-mobile-total',view!=='calculator');
@@ -595,7 +827,7 @@ function renderCloudStatus(){
   const status=cloud?.loading?'Sincronizando…':cloud?.error?'Conexión pendiente':cloud?.isActive?'Sincronizado con el taller':cloud?.user?'Cuenta pendiente de activación':'Acceso del personal';
   $('cloud-status-text').textContent=status;$('cloud-indicator').classList.toggle('offline',!cloud?.isActive);
   $('account-label').textContent=cloud?.user?(cloud.profile?.display_name||'Mi cuenta'):'Acceder';
-  for(const id of ['team-nav','finance-nav','audit-nav','admin-nav-label'])$(id).hidden=!cloud?.isAdmin;$('sync-button').hidden=!cloud?.user;$('signout-button').hidden=!cloud?.user;
+  for(const id of ['team-nav','finance-nav','audit-nav','admin-nav-label'])$(id).hidden=!cloud?.isAdmin;$('sync-button').hidden=!cloud?.user;$('signout-button').hidden=!cloud?.user;$('layout-edit').hidden=!cloud?.isActive;
   $('account-role').textContent=cloud?.isActive?(cloud.isAdmin?'Administrador':'Mecánico'):'Perfil del mecánico';
   $('ticket-storage-text').textContent='Ventas en Supabase · Borrador local';$('sync-button').classList.toggle('syncing',Boolean(cloud?.loading));$('sync-button').setAttribute('aria-busy',String(Boolean(cloud?.loading)));$('home-workspace').textContent=cloud?.isAdmin?'Taller · Administración':'Mi actividad · Mecánico';$('last-sync').textContent=cloud?.lastSynced?'Actualizado a las '+cloud.lastSynced.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}):'Sincronizando registros…';renderAccess();
 }
@@ -609,7 +841,7 @@ function cloudChanged(event){
     persist();renderDraftFields();refresh();
     if(currentView==='orders')renderOrders();if(currentView==='catalog')renderPrices();if(currentView==='summary')renderSummary();if(currentView==='team')renderTeam();
     if($('auth-form')||$('claim-form')||$('pending-account')){$('modal').close();toast('Ya estás dentro del taller.');}
-  }else if(event.kind==='signedout'){
+  }else if(event.kind==='signedout'){homeLayout.cancel();
     pendingPresentedUser=null;
     if(accountUser){localStorage.removeItem(activeKey);accountUser=null;activeKey=GUEST_KEY;state=readState(GUEST_KEY);renderDraftFields();refresh();if(['team','finance','audit'].includes(currentView))setView('dashboard');if(currentView==='orders')renderOrders();if(currentView==='summary')renderSummary();if(currentView==='catalog')renderPrices();}
   }else if(event.kind==='pending'){
@@ -663,9 +895,10 @@ function editEmployee(id){
   $('employee-form').onsubmit=async e=>{e.preventDefault();const form=e.currentTarget,button=document.querySelector('[form="employee-form"]'),data=new FormData(form);button.disabled=true;try{await cloud.saveEmployee({...profile,display_name:String(data.get('name')).trim(),commission:Number(data.get('commission')),role:self?'admin':String(data.get('role')),active:self?true:data.get('active')==='true'});await cloud.load();if(form.isConnected)$('modal').close();toast('Empleado actualizado.');}catch(error){if(form.isConnected){$('employee-message').textContent=errorText(error);button.disabled=false;}}};
 }
 
-management=new ManagementPanel({getState:()=>state,getCloud:()=>cloud,modal,toast,errorText,confirmAction,exportRows:(name,rows)=>{download(name,'\uFEFF'+rows.map(row=>row.map(csvCell).join(';')).join('\r\n'),'text/csv;charset=utf-8');toast('Informe exportado.');}});
+const homeLayout=new HomeLayout({getCloud:()=>cloud,toast,rerender:()=>management.dashboard()});
+management=new ManagementPanel({layout:homeLayout,getState:()=>state,getCloud:()=>cloud,modal,toast,errorText,confirmAction,exportRows:(name,rows)=>{download(name,'\uFEFF'+rows.map(row=>row.map(csvCell).join(';')).join('\r\n'),'text/csv;charset=utf-8');toast('Informe exportado.');}});
 for(const id of ['orders-list','price-table','summary-content','finance-content','team-list','clients-list']){const target=$(id);if(target)new MutationObserver(()=>labelTables(target)).observe(target,{childList:true});}
-hydrateIcons();$('top-date').textContent=new Intl.DateTimeFormat('es-MX',{day:'numeric',month:'long',year:'numeric'}).format(new Date());
+hydrateIcons();homeLayout.init();$('top-date').textContent=new Intl.DateTimeFormat('es-MX',{day:'numeric',month:'long',year:'numeric'}).format(new Date());
 $('categories').innerHTML=CATEGORIES.map(c=>`<button class="category-button ${c.id==='all'?'active':''}" data-category="${c.id}" aria-pressed="${c.id==='all'}">${icon(c.icon)}${esc(c.label)}</button>`).join('');
 renderDraftFields();refresh();
 document.querySelectorAll('[data-view]').forEach(button=>button.onclick=()=>setView(button.dataset.view));

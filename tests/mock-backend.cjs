@@ -16,7 +16,7 @@ async function createMock(){
   const services=CATALOG.map(s=>({id:s.id,name:s.name,cost:s.cost,price:s.price,exclusive_group:s.exclusive||null}));
   const orders=[],requests=[],expenses=[],audit=[];
   const flags={loseResponse:true,hasAdmin:true};
-  const session=p=>{const expires_at=Math.floor(Date.now()/1000)+3600;return {access_token:[{alg:'HS256',typ:'JWT'},{sub:p.id,role:'authenticated',aud:'authenticated',exp:expires_at},'fixture'].map((v,i)=>i<2?Buffer.from(JSON.stringify(v)).toString('base64url'):v).join('.'),token_type:'bearer',expires_in:3600,expires_at,refresh_token:'fixture-'+p.id,user:{id:p.id,email:p.email,aud:'authenticated',role:'authenticated',app_metadata:{provider:'email'},user_metadata:{display_name:p.display_name},created_at:new Date().toISOString()}};};
+  const session=p=>{const expires_at=Math.floor(Date.now()/1000)+3600;return {access_token:[{alg:'HS256',typ:'JWT'},{sub:p.id,role:'authenticated',aud:'authenticated',exp:expires_at},'fixture'].map((v,i)=>i<2?Buffer.from(JSON.stringify(v)).toString('base64url'):v).join('.'),token_type:'bearer',expires_in:3600,expires_at,refresh_token:'fixture-'+p.id,user:{id:p.id,email:p.email,aud:'authenticated',role:'authenticated',app_metadata:{provider:'email'},user_metadata:{display_name:p.display_name,...(p.metadata||{})},created_at:new Date().toISOString()}};};
 
   /** Registra las rutas en un contexto de Playwright. `onStatic` permite observar archivos servidos. */
   async function install(context,{onStatic}={}){
@@ -29,14 +29,18 @@ async function createMock(){
         return route.fulfill({status:200,body:fs.readFileSync(file),contentType:types[path.extname(file)]||'application/octet-stream'});
       }
       if(url.hostname!=='ehckobsmodqjpfmnnver.supabase.co')return route.abort();
-      const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'GET,POST,OPTIONS','content-type':'application/json'};
+      const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'GET,POST,PUT,PATCH,DELETE,OPTIONS','content-type':'application/json'};
       const send=(body,status=200)=>route.fulfill({status,headers,body:JSON.stringify(body)});
       if(req.method()==='OPTIONS')return route.fulfill({status:204,headers});
       const args=req.postDataJSON()||{},token=req.headers().authorization?.split(' ')[1];let profile;
       try{profile=profiles.find(p=>p.id===JSON.parse(Buffer.from(token.split('.')[1],'base64url')).sub);}catch{}
       if(url.pathname==='/auth/v1/token'){const p=profiles.find(p=>p.email===args.email||args.refresh_token==='fixture-'+p.id);return p?send(session(p)):send({message:'Invalid login credentials'},400);}
       if(url.pathname==='/auth/v1/logout')return send({});
-      if(url.pathname==='/auth/v1/user')return send(profile?session(profile).user:{},profile?200:401);
+      if(url.pathname==='/auth/v1/user'){
+        // PUT: la persona actualiza los metadatos de su propia cuenta (p. ej., el orden del inicio); null elimina la clave.
+        if(req.method()==='PUT'&&profile){profile.metadata=profile.metadata||{};for(const [k,v] of Object.entries(args.data||{})){if(v===null)delete profile.metadata[k];else profile.metadata[k]=v;}requests.userUpdates=(requests.userUpdates||0)+1;}
+        return send(profile?session(profile).user:{},profile?200:401);
+      }
       if(url.pathname==='/auth/v1/signup')return send({user:{id:profiles[2].id,email:args.email},session:null});
       if(url.pathname==='/functions/v1/bennys-staff'){
         if(args.action==='login'){const p=profiles.find(p=>p.username===args.username);return p?send({session:session(p)}):send({error:'Usuario o contraseña incorrectos.'},401);}

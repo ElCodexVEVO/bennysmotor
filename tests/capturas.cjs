@@ -49,6 +49,11 @@ const executablePath=process.env.EDGE_PATH||'C:/Program Files (x86)/Microsoft/Ed
     const {ctx,page}=await open(normal,{w:1440,h:900});await login(page);
     await save(page,'panel-1440');
     await page.setViewportSize({width:1440,height:1900});await page.waitForTimeout(500);await save(page,'panel-1440-completo');await page.setViewportSize({width:1440,height:900});
+    // Personalizar el inicio: modo de edición y orden guardado
+    await page.locator('#layout-edit').click();await page.waitForTimeout(500);await save(page,'inicio-personalizar-1440');
+    await page.locator('[data-module="payments"] .module-up').click();await page.locator('[data-module="clients"] .module-up').click();await page.waitForTimeout(400);
+    await page.locator('#layout-save').click();await page.waitForTimeout(900);await save(page,'inicio-orden-guardado-1440');
+    await page.locator('#layout-edit').click();await page.locator('#layout-reset').click();await page.locator('#layout-save').click();await page.waitForTimeout(500);
     await go(page,'calculator');await page.evaluate(()=>{for(const id of ['v8','frenos','awd'])document.querySelector(`[data-add="${id}"]`).click();const c=document.getElementById('client');c.value='Cliente de ejemplo A';c.dispatchEvent(new Event('input'));});await page.waitForTimeout(600);await save(page,'venta-1440');
     await page.locator('#checkout').click();await page.waitForTimeout(600);await save(page,'confirmar-venta-1440');await page.keyboard.press('Escape');await page.waitForTimeout(300);
     await go(page,'orders');await save(page,'ventas-1440');
@@ -66,6 +71,7 @@ const executablePath=process.env.EDGE_PATH||'C:/Program Files (x86)/Microsoft/Ed
     const {ctx,page}=await open(normal,{w:390,h:844,dsf:2});await login(page);
     await save(page,'panel-390');
     await page.evaluate(()=>window.scrollTo(0,430));await page.waitForTimeout(500);await save(page,'panel-390-desplazado');await page.evaluate(()=>window.scrollTo(0,0));
+    await page.locator('#layout-edit').click();await page.waitForTimeout(400);await save(page,'inicio-personalizar-390');await page.locator('#layout-cancel').click();await page.waitForTimeout(300);
     await page.locator('#menu-toggle').click();await page.waitForTimeout(450);await save(page,'menu-390');await page.locator('#nav-backdrop').click({position:{x:370,y:400}});await page.waitForTimeout(400);
     await go(page,'calculator',true);await page.evaluate(()=>{for(const id of ['v8','frenos'])document.querySelector(`[data-add="${id}"]`).click();});await page.waitForTimeout(500);await save(page,'venta-390');
     await go(page,'orders',true);await save(page,'ventas-390');

@@ -60,8 +60,8 @@ const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message)
     if(box.height+60<height)assert.ok(Math.abs(box.y+box.height/2-height/2)<=12,`Panel descentrado en vertical a ${width}×${height}`);
   }
   await page.setViewportSize({width:1440,height:1100});pass('Panel de acceso centrado en horizontal y vertical');
-  assert.match(await page.locator('.access-photo').evaluate(el=>getComputedStyle(el).backgroundImage),/bennys-acceso-panel/);
-  await page.evaluate(async()=>{for(const url of ['assets/halloween/bennys-acceso-panel.webp','assets/halloween/bennys-panel-interior.webp']){const image=new Image();image.src=url;await image.decode();if(image.naturalWidth<1200)throw Error('Fondo incompleto');}});
+  assert.match(await page.locator('.access-photo').evaluate(el=>getComputedStyle(el).backgroundImage),/bennys-acceso-fachada/);
+  await page.evaluate(async()=>{for(const url of ['assets/halloween/bennys-acceso-fachada.webp','assets/halloween/bennys-panel-interior.webp']){const image=new Image();image.src=url;await image.decode();if(image.naturalWidth<1200)throw Error('Fondo incompleto');}});
   assert.ok((await page.locator('.access-card').evaluate(el=>getComputedStyle(el).backdropFilter||getComputedStyle(el).webkitBackdropFilter)).includes('blur'));
   await click('#access-screen [data-ambient-toggle]');assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('effects-paused')),true);assert.equal(await page.locator('.access-backdrop .ambient-fog').first().evaluate(el=>getComputedStyle(el).animationPlayState),'paused');
   await page.reload();await page.locator('#auth-form').waitFor();assert.equal(await page.locator('#access-screen [data-ambient-toggle]').getAttribute('aria-pressed'),'false');await click('#access-screen [data-ambient-toggle]');assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('effects-paused')),false);
@@ -192,6 +192,62 @@ const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message)
   // El panel del administrador muestra actividad real y solo registros autorizados
   await click('[data-view="dashboard"]');assert.match(await page.locator('#dashboard-content').innerText(),/Actividad reciente/);assert.match(await page.locator('#dashboard-content .timeline').innerText(),/Venta anulada|Gasto/);pass('Actividad reciente del panel procede de registros reales de auditoría');
 
+  // ─── Personalizar el inicio: mover módulos y guardar el orden por cuenta ───
+  {
+    await click('[data-view="dashboard"]');await page.waitForTimeout(500);
+    const order=()=>page.evaluate(()=>[...document.querySelectorAll('#module-grid>.module')].map(m=>m.dataset.module));
+    const layoutKeys=()=>page.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith('bennys-home-layout')));
+    const adminDefault=['kpis','chart','clients','recent','activity','payments','team'];
+    assert.deepEqual(await order(),adminDefault,'Orden original del administrador');
+    assert.equal(await page.locator('.module-grip').first().isVisible(),false,'Las asas solo aparecen al personalizar');
+    await page.locator('#layout-edit').click();assert.equal(await page.locator('#layout-bar').isVisible(),true);assert.equal(await page.locator('#layout-edit').getAttribute('aria-pressed'),'true');
+    // Teclado: flecha sobre el asa
+    await page.locator('[data-module="clients"] .module-grip').focus();await page.keyboard.press('ArrowUp');
+    assert.deepEqual((await order()).slice(0,3),['kpis','clients','chart']);assert.equal(await page.evaluate(()=>document.activeElement.classList.contains('module-grip')),true,'El foco se conserva en el asa');
+    assert.match(await page.locator('#layout-live').innerText(),/posición 2 de 7/);
+    // Botones Mover antes / después
+    await page.locator('[data-module="team"] .module-up').click();assert.deepEqual((await order()).slice(-2),['team','payments']);
+    await page.locator('[data-module="team"] .module-down').click();assert.deepEqual((await order()).slice(-2),['payments','team']);
+    // Arrastrar con el ratón por el asa
+    {
+      const grip=await page.locator('[data-module="recent"] .module-grip').boundingBox(),target=await page.locator('[data-module="kpis"]').boundingBox();
+      await page.mouse.move(grip.x+grip.width/2,grip.y+grip.height/2);await page.mouse.down();await page.mouse.move(target.x+target.width/2,target.y+12,{steps:10});
+      assert.equal(await page.locator('.drag-chip').count(),1,'Se muestra la etiqueta de arrastre');assert.ok(await page.locator('.module.drop-before').count()===1,'Se marca dónde caerá el módulo');
+      await page.mouse.up();assert.equal(await page.locator('.drag-chip').count(),0);
+      assert.equal((await order())[0],'recent','El módulo arrastrado queda antes del destino');
+    }
+    // Cancelar descarta; nada se guarda
+    await page.locator('#layout-cancel').click();assert.deepEqual(await order(),adminDefault);assert.equal(await page.locator('#layout-bar').isVisible(),false);assert.equal((await layoutKeys()).length,0);assert.equal(profiles[0].metadata?.bennys_home_layout,undefined);
+    // Una sincronización durante la edición no deshace los cambios
+    await page.locator('#layout-edit').click();await page.locator('[data-module="payments"] .module-up').click();
+    await page.locator('#sync-button').click();await page.waitForTimeout(900);
+    assert.deepEqual((await order()).slice(3,6),['recent','payments','activity']);assert.ok(await page.locator('.module-tools').count()>=7,'Las asas siguen tras sincronizar');
+    // Guardar: cuenta + este equipo
+    await page.locator('#layout-save').click();await page.waitForFunction(()=>/guardado/.test(document.querySelector('#toast').textContent));
+    assert.match(await page.locator('#toast').innerText(),/guardado en tu cuenta/);
+    const saved=['kpis','chart','clients','recent','payments','activity','team'];
+    assert.deepEqual(await order(),saved);assert.equal(await page.locator('#layout-bar').isVisible(),false);assert.equal(await page.locator('.module-grip').first().isVisible(),false);
+    assert.deepEqual(profiles[0].metadata.bennys_home_layout.order,saved,'El orden queda en los metadatos de la cuenta');assert.equal((await layoutKeys()).length,1);
+    // Persistencia: recarga, y desde otro equipo (almacenamiento limpio) con la misma cuenta
+    await page.reload();await page.waitForFunction(()=>!document.body.classList.contains('locked'));await page.waitForSelector('#module-grid');assert.deepEqual(await order(),saved,'El orden sobrevive a la recarga');
+    {
+      const other=await browser.newContext({viewport:{width:1440,height:900},locale:'es-MX'});await mock.install(other);const p2=await other.newPage();
+      const login=async(user)=>{await p2.goto(ORIGIN);await p2.locator('#auth-form').waitFor();await p2.locator('[name=username]').fill(user);await p2.locator('[name=password]').fill('fixture-password');await p2.locator('[form="auth-form"]').click({force:true});await p2.waitForFunction(()=>!document.body.classList.contains('locked'));await p2.waitForSelector('#module-grid');return p2.evaluate(()=>[...document.querySelectorAll('#module-grid>.module')].map(m=>m.dataset.module));};
+      assert.deepEqual(await login('mateo'),saved,'El orden acompaña a la cuenta en otro equipo');
+      // Otra persona no se ve afectada y conserva el orden original de su rol
+      await p2.locator('#account-button').click();await p2.locator('#account-signout').click();await p2.locator('#auth-form').waitFor();
+      assert.deepEqual(await login('alex'),['kpis','chart','clients','recent','mine','payments'],'Otra cuenta mantiene el orden original');
+      assert.equal(await p2.locator('#layout-edit').isVisible(),true);assert.equal(await p2.locator('[data-module="activity"],[data-module="team"]').count(),0,'El empleado no recibe módulos de administración');
+      await other.close();
+    }
+    // Restaurar el orden original elimina la preferencia
+    await page.locator('#layout-edit').click();await page.locator('#layout-reset').click();assert.deepEqual(await order(),adminDefault);await page.locator('#layout-save').click();await page.waitForFunction(()=>/Orden original/.test(document.querySelector('#toast').textContent));
+    assert.equal(profiles[0].metadata?.bennys_home_layout,undefined);assert.equal((await layoutKeys()).length,0);assert.deepEqual(await order(),adminDefault);
+    // Accesible: sin salir del módulo no se pierde el trabajo; cambiar de vista cancela la edición
+    await page.locator('#layout-edit').click();await page.locator('[data-module="chart"] .module-down').click();await click('[data-view="orders"]');await click('[data-view="dashboard"]');assert.deepEqual(await order(),adminDefault,'Salir de la vista descarta los cambios sin guardar');assert.equal(await page.locator('#layout-bar').isVisible(),false);
+  }
+  pass('Personalizar el inicio: teclado, botones y arrastre; cancelar, guardar por cuenta, recarga, otro equipo, otra persona y restaurar');
+
   // ─── Contraste y cristal en el panel ───
   await page.setViewportSize({width:1440,height:900});await click('[data-view="dashboard"]');await page.waitForTimeout(900);
   assert.doesNotMatch(await page.locator('body').innerText(),forbidden);
@@ -226,6 +282,13 @@ const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message)
   }
   pass('Diseño sin desbordamientos de 360 a 1920 px en todas las vistas');
   await page.setViewportSize({width:390,height:844});await click('[data-view="dashboard"]');await page.waitForTimeout(700);await shot(page,'panel-390',{fullPage:true});
+  // Personalizar en móvil: botones táctiles, sin desbordes
+  await page.locator('#layout-edit').click();await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Sin desborde al personalizar en móvil');
+  {const grip=await page.locator('[data-module="chart"] .module-grip').boundingBox(),down=await page.locator('[data-module="chart"] .module-down').boundingBox();assert.ok(grip.width>=36&&grip.height>=36&&down.width>=36&&down.height>=36,'Asa y botones táctiles de al menos 36 px');}
+  await page.locator('[data-module="chart"] .module-down').click();assert.equal((await page.evaluate(()=>[...document.querySelectorAll('#module-grid>.module')].map(m=>m.dataset.module)))[1],'clients','Mover con botones en móvil');
+  await shot(page,'inicio-personalizar-390',{fullPage:false});
+  await page.locator('#layout-cancel').click();
   for(const [label,selector,min] of [['navegación inferior','.mobile-nav button',44],['botón principal de la cabecera','.garage-hero .primary',40],['menú','#menu-toggle',36],['cuenta','#account-button',36]]){
     const box=await page.locator(selector).first().boundingBox();assert.ok(box.height>=min-0.5&&box.width>=36,`Objetivo táctil pequeño: ${label} (${Math.round(box.width)}×${Math.round(box.height)})`);
   }

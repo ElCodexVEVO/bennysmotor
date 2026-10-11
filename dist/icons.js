@@ -45,6 +45,10 @@ const ICONS={
   moon:'<path d="M19 15.500A8 8 0 0 1 8.500 5a8 8 0 1 0 10.500 10.500Z"/><path d="M17 3v4m-2-2h4m1 4v2m-1-1h2"/>',
   pumpkin:'<path d="M12 8c-5 0-9 2.600-9 6.200S7 20.500 12 20.500s9-2.700 9-6.300S17 8 12 8Z"/><path d="M12 8c-2.600 1.400-3.800 3.900-3.800 6.200s1.200 4.700 3.800 6.300M12 8c2.600 1.400 3.800 3.900 3.800 6.200s-1.200 4.700-3.800 6.300"/><path d="M12 8V4.500M12 4.500c1 0 2.100-.6 2.700-1.600"/>',
   filter:'<path d="M3 5h18l-7 8v6l-4 2v-8L3 5Z"/>',
+  grip:'<g fill="currentColor" stroke="none"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></g>',
+  chevronup:'<path d="m6 15 6-6 6 6"/>',
+  chevrondown:'<path d="m6 9 6 6 6-6"/>',
+  layout:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
   receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3ZM9 8h6M9 12h6"/>'
 };
 export const icon=n=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]||ICONS.wrench}</svg>`;

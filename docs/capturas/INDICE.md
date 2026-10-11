@@ -12,6 +12,8 @@ Generadas con `node tests/capturas.cjs` desde el código implementado (SDK real 
 - `carga-1440.png`
 - `panel-1440.png`
 - `panel-1440-completo.png`
+- `inicio-personalizar-1440.png`
+- `inicio-orden-guardado-1440.png`
 - `venta-1440.png`
 - `confirmar-venta-1440.png`
 - `ventas-1440.png`
@@ -24,6 +26,7 @@ Generadas con `node tests/capturas.cjs` desde el código implementado (SDK real 
 - `panel-1024.png`
 - `panel-390.png`
 - `panel-390-desplazado.png`
+- `inicio-personalizar-390.png`
 - `menu-390.png`
 - `venta-390.png`
 - `ventas-390.png`
