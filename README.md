@@ -29,7 +29,8 @@ El administrador ve todas las órdenes, administra empleados y edita tarifas. Lo
 - 18 servicios del tarifario enviado por el usuario, en euros: 7 de taller, 2 motores, 3 tracciones, 3 neumáticos y 3 extras.
 - Búsqueda, categorías, cantidades y selecciones rápidas.
 - Motor, tracción y neumáticos admiten una opción por vehículo; cambiar de opción reemplaza la anterior.
-- Cliente e ID del jugador; descuento porcentual y comisión del mecánico.
+- Solo nombre del cliente; descuento porcentual y comisión del mecánico.
+- Clientes frecuentes: lista automática de nombres con visitas, última visita e importe acumulado, ordenada por frecuencia. Permite buscar y reutilizar un cliente en la orden. Solo suma órdenes cobradas, agrupa variantes de mayúsculas, tildes y espacios. El administrador ve los clientes del taller y cada empleado los de sus órdenes. No requiere ejecutar SQL adicional.
 - Costo de fábrica, total de venta, comisión y ganancia del taller visibles en cada orden.
 - La comisión se calcula sobre la ganancia positiva después del descuento. El administrador la asigna a cada empleado y puede cambiarla en sus propias órdenes.
 - Registro de servicios cobrados con pago y notas, ticket para FiveM, historial, búsqueda, filtros por período y anulación con conservación del registro.

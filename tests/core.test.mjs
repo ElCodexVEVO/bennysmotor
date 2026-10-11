@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {CATALOG} from '../dist/catalog.js';
-import {calculate,addToOrder,receipt} from '../dist/core.js';
+import {calculate,addToOrder,receipt,frequentClients} from '../dist/core.js';
 const service=id=>CATALOG.find(i=>i.id===id);
 const selected=ids=>ids.map(id=>({...service(id),qty:1}));
 test('Los 18 costos y precios coinciden con la imagen del servidor',()=>{
@@ -34,6 +34,16 @@ test('Precios con decimales redondean descuentos y comisiones a céntimos',()=>{
   assert.equal(t.total,27.78);assert.equal(t.cost,9.99);assert.equal(t.commission,2.22);assert.equal(t.net,15.57);
 });
 test('El ticket para el cliente excluye costo, ganancia y comisión',()=>{
-  const items=selected(['v8']);const text=receipt({items,totals:calculate(items),client:'Alex',vehicle:'Sultan',plate:'ABC123',mechanic:'Mateo',discount:0});
-  assert.match(text,/Alex/);assert.match(text,/TOTAL/);assert.doesNotMatch(text,/fábrica|Ganancia|Comisión|ABC123|Sultan|Vehículo|Matrícula/);
+  const items=selected(['v8']);const text=receipt({items,totals:calculate(items),client:'Alex',playerId:'ID-ANTIGUO',vehicle:'Sultan',plate:'ABC123',mechanic:'Mateo',discount:0});
+  assert.match(text,/Alex/);assert.match(text,/TOTAL/);assert.doesNotMatch(text,/fábrica|Ganancia|Comisión|ABC123|Sultan|Vehículo|Matrícula|ID-ANTIGUO/);
+});
+
+test('Clientes frecuentes agrupa nombres, suma visitas y excluye anulaciones',()=>{
+  const order=(client,date,total,status='active')=>({client,date,totals:{total},status});
+  const orders=[order('José  Ruiz','2026-10-01',100.1),order(' JOSE RUIZ ','2026-10-02',200.2),order('José Ruiz','2026-10-03',300.3),order('Ana','2026-10-04',700),order('Ana','2026-10-05',900,'cancelled'),order('Bruno','2026-10-01',50),order('  ','2026-10-06',10),order('Sin fecha','incorrecta',10)];
+  const original=structuredClone(orders),clients=frequentClients(orders);
+  assert.deepEqual(clients.map(c=>c.name),['José Ruiz','Ana','Bruno']);
+  assert.equal(clients[0].visits,3);assert.equal(clients[0].total,600.6);assert.equal(clients[0].lastVisit,'2026-10-03');
+  assert.equal(clients[1].visits,1);assert.equal(clients[1].total,700);assert.deepEqual(orders,original);
+  assert.deepEqual(frequentClients([]),[]);
 });

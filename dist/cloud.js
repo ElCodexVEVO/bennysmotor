@@ -1,5 +1,10 @@
 import {CLOUD_CONFIG} from './config.js';
 
+const orderPayload = row => {
+  const {playerId,vehicle,plate,...order}=row.payload;
+  return {...order,status:row.status};
+};
+
 export class BennysCloud {
   constructor(onChange){
     if(!globalThis.supabase?.createClient)throw Error('No se pudo cargar el cliente de Supabase.');
@@ -34,7 +39,7 @@ export class BennysCloud {
       const [services,orders,team]=await Promise.all([this.pages('bennys_services','id'),this.pages('bennys_orders','created_at'),profile.role==='admin'?this.pages('bennys_profiles','created_at'):Promise.resolve([])]);
       if(version!==this.version||userId!==this.user?.id)return;
       if(services.length!==18)throw Error('El tarifario del taller está incompleto.');
-      this.ready=true;this.loading=false;this.team=team;this.onChange({kind:'data',profile,services,orders:orders.map(o=>({...o.payload,status:o.status})),team,userId});
+      this.ready=true;this.loading=false;this.team=team;this.onChange({kind:'data',profile,services,orders:orders.map(orderPayload),team,userId});
     }catch(error){
       if(version!==this.version||userId!==this.user?.id)return;
       this.ready=false;this.loading=false;this.error=error;this.onChange({kind:'error',error});
@@ -46,10 +51,11 @@ export class BennysCloud {
   async claimAdmin(code){await this.rpc('bennys_claim_admin',{p_code:code});await this.load();}
   async createOrder(order){
     if(!this.isActive)throw Error('Inicia sesión con una cuenta activa para registrar el servicio.');
-    const row=await this.rpc('bennys_create_order',{p_id:order.id,p_client:order.client,p_player_id:order.playerId,p_items:order.items.map(i=>({id:i.id,qty:i.qty,price:i.price,cost:i.cost})),p_discount:order.discount,p_commission:order.commission,p_payment:order.payment,p_notes:order.notes});
-    return {...row.payload,status:row.status};
+    // Parámetro vacío para mantener compatibilidad con el SQL ya instalado.
+    const row=await this.rpc('bennys_create_order',{p_id:order.id,p_client:order.client,p_player_id:'',p_items:order.items.map(i=>({id:i.id,qty:i.qty,price:i.price,cost:i.cost})),p_discount:order.discount,p_commission:order.commission,p_payment:order.payment,p_notes:order.notes});
+    return orderPayload(row);
   }
-  async cancelOrder(id){const row=await this.rpc('bennys_cancel_order',{p_id:id});return {...row.payload,status:row.status};}
+  async cancelOrder(id){return orderPayload(await this.rpc('bennys_cancel_order',{p_id:id}));}
   async saveService(service){return this.rpc('bennys_update_service',{p_id:service.id,p_cost:service.cost,p_price:service.price});}
   async saveEmployee(profile){return this.rpc('bennys_manage_employee',{p_id:profile.id,p_name:profile.display_name,p_role:profile.role,p_active:profile.active,p_commission:profile.commission});}
 }

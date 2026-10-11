@@ -65,7 +65,7 @@ function addToOrder(items,service,qty=1) {
 function receipt(order) {
   const t=order.totals;
   return ["BENNY'S MOTORS · ORDEN DE TALLER",order.folio||'COTIZACIÓN',
-    `Cliente: ${order.client||'Sin indicar'}${order.playerId?' · ID '+order.playerId:''}`,
+    `Cliente: ${order.client||'Sin indicar'}`,
     `Mecánico: ${order.mechanic||'Sin indicar'}`,'',
     ...order.items.map(i=>`${i.qty} × ${i.name} — ${euro(i.price*i.qty)}`),
     '',`Subtotal: ${euro(t.subtotal)}`,
@@ -73,6 +73,21 @@ function receipt(order) {
     `TOTAL: ${euro(t.total)}`,...(order.payment?[`Pago: ${order.payment}`]:[]),
     ...(order.notes?[`Nota: ${order.notes}`]:[]),"Gracias por rodar con Benny's."
   ].join('\n');
+}
+
+const clientKey = name => String(name??'').trim().replace(/\s+/g,' ').normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('es');
+function frequentClients(orders) {
+  const clients=new Map();
+  for(const order of orders){
+    const name=String(order.client??'').trim().replace(/\s+/g,' '),date=Date.parse(order.date);
+    if(order.status!=='active'||!name||!Number.isFinite(date))continue;
+    const key=clientKey(name),client=clients.get(key)||{key,name,visits:0,total:0,lastVisit:order.date};
+    client.visits++;
+    client.total=round(client.total+(Number.isFinite(order.totals?.total)?order.totals.total:0));
+    if(date>=Date.parse(client.lastVisit)){client.name=name;client.lastVisit=order.date;}
+    clients.set(key,client);
+  }
+  return [...clients.values()].sort((a,b)=>b.visits-a.visits||Date.parse(b.lastVisit)-Date.parse(a.lastVisit)||a.name.localeCompare(b.name,'es'));
 }
 
 
@@ -113,6 +128,11 @@ const icon=n=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]||ICONS.wre
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 
+const orderPayload = row => {
+  const {playerId,vehicle,plate,...order}=row.payload;
+  return {...order,status:row.status};
+};
+
 class BennysCloud {
   constructor(onChange){
     if(!globalThis.supabase?.createClient)throw Error('No se pudo cargar el cliente de Supabase.');
@@ -147,7 +167,7 @@ class BennysCloud {
       const [services,orders,team]=await Promise.all([this.pages('bennys_services','id'),this.pages('bennys_orders','created_at'),profile.role==='admin'?this.pages('bennys_profiles','created_at'):Promise.resolve([])]);
       if(version!==this.version||userId!==this.user?.id)return;
       if(services.length!==18)throw Error('El tarifario del taller está incompleto.');
-      this.ready=true;this.loading=false;this.team=team;this.onChange({kind:'data',profile,services,orders:orders.map(o=>({...o.payload,status:o.status})),team,userId});
+      this.ready=true;this.loading=false;this.team=team;this.onChange({kind:'data',profile,services,orders:orders.map(orderPayload),team,userId});
     }catch(error){
       if(version!==this.version||userId!==this.user?.id)return;
       this.ready=false;this.loading=false;this.error=error;this.onChange({kind:'error',error});
@@ -159,10 +179,11 @@ class BennysCloud {
   async claimAdmin(code){await this.rpc('bennys_claim_admin',{p_code:code});await this.load();}
   async createOrder(order){
     if(!this.isActive)throw Error('Inicia sesión con una cuenta activa para registrar el servicio.');
-    const row=await this.rpc('bennys_create_order',{p_id:order.id,p_client:order.client,p_player_id:order.playerId,p_items:order.items.map(i=>({id:i.id,qty:i.qty,price:i.price,cost:i.cost})),p_discount:order.discount,p_commission:order.commission,p_payment:order.payment,p_notes:order.notes});
-    return {...row.payload,status:row.status};
+    // Parámetro vacío para mantener compatibilidad con el SQL ya instalado.
+    const row=await this.rpc('bennys_create_order',{p_id:order.id,p_client:order.client,p_player_id:'',p_items:order.items.map(i=>({id:i.id,qty:i.qty,price:i.price,cost:i.cost})),p_discount:order.discount,p_commission:order.commission,p_payment:order.payment,p_notes:order.notes});
+    return orderPayload(row);
   }
-  async cancelOrder(id){const row=await this.rpc('bennys_cancel_order',{p_id:id});return {...row.payload,status:row.status};}
+  async cancelOrder(id){return orderPayload(await this.rpc('bennys_cancel_order',{p_id:id}));}
   async saveService(service){return this.rpc('bennys_update_service',{p_id:service.id,p_cost:service.cost,p_price:service.price});}
   async saveEmployee(profile){return this.rpc('bennys_manage_employee',{p_id:profile.id,p_name:profile.display_name,p_role:profile.role,p_active:profile.active,p_commission:profile.commission});}
 }
@@ -170,13 +191,13 @@ class BennysCloud {
 
 const $=id=>document.getElementById(id);
 const GUEST_KEY='bennys-motors-v1';
-const defaultState=()=>({version:1,catalog:CATALOG.map(i=>({...i})),orders:[],next:1,settings:{mechanic:'',commission:0},draft:{items:[],client:'',playerId:'',discount:0,commission:0}});
+const defaultState=()=>({version:1,catalog:CATALOG.map(i=>({...i})),orders:[],next:1,settings:{mechanic:'',commission:0},draft:{items:[],client:'',discount:0,commission:0}});
 const percent=n=>Number.isFinite(n)&&n>=0&&n<=100;
 const amount=n=>Number.isFinite(n)&&n>=0&&n<=100000000;
 const validItem=i=>i&&CATALOG.some(s=>s.id===i.id)&&typeof i.name==='string'&&amount(i.price)&&amount(i.cost)&&Number.isInteger(i.qty)&&i.qty>=1&&i.qty<=999;
-const validDraft=d=>d&&Array.isArray(d.items)&&d.items.every(validItem)&&['client','playerId'].every(k=>typeof d[k]==='string')&&percent(d.discount)&&percent(d.commission);
+const validDraft=d=>d&&Array.isArray(d.items)&&d.items.every(validItem)&&typeof d.client==='string'&&percent(d.discount)&&percent(d.commission);
 function validState(s){return s?.version===1&&Array.isArray(s.catalog)&&s.catalog.length===18&&CATALOG.every(original=>s.catalog.some(i=>i.id===original.id&&amount(i.price)&&amount(i.cost)))&&Array.isArray(s.orders)&&Number.isSafeInteger(s.next)&&s.next>0&&typeof s.settings?.mechanic==='string'&&percent(s.settings.commission)&&validDraft(s.draft)&&s.orders.every(o=>validDraft(o)&&typeof o.id==='string'&&typeof o.folio==='string'&&Number.isFinite(Date.parse(o.date))&&['subtotal','cost','discount','total','gross','commission','net','units'].every(k=>Number.isFinite(o.totals?.[k]))&&['active','cancelled'].includes(o.status));}
-function sanitizeState(s){const clean={...s,catalog:s.catalog.map(i=>({...CATALOG.find(o=>o.id===i.id),price:i.price,cost:i.cost})),draft:{...s.draft},orders:s.orders.map(o=>({...o}))};for(const row of [clean.draft,...clean.orders]){delete row.vehicle;delete row.plate;}return clean;}
+function sanitizeState(s){const clean={...s,catalog:s.catalog.map(i=>({...CATALOG.find(o=>o.id===i.id),price:i.price,cost:i.cost})),draft:{...s.draft},orders:s.orders.map(o=>({...o}))};for(const row of [clean.draft,...clean.orders]){delete row.vehicle;delete row.plate;delete row.playerId;}return clean;}
 function readState(key){try{const parsed=JSON.parse(localStorage.getItem(key));return validState(parsed)?sanitizeState(parsed):defaultState();}catch{return defaultState();}}
 let state=readState(GUEST_KEY),activeKey=GUEST_KEY,cloud=null,category='all',currentView='calculator',toastTimer,accountUser=null;
 function toast(message){$('toast').textContent=message;$('toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),4500);}
@@ -213,33 +234,50 @@ function renderOrder(){
   $('commission').readOnly=Boolean(cloud?.user&&!cloud.isAdmin);
   $('commission').title=cloud?.user&&!cloud.isAdmin?'Comisión asignada por el administrador':'';
 }
-function renderDraftFields(){for(const [id,key] of Object.entries({'client':'client','player-id':'playerId','discount':'discount','commission':'commission'}))$(id).value=state.draft[key]||(['discount','commission'].includes(key)?0:'');}
-function refresh(){renderServices();renderOrder();$('mechanic-label').textContent=state.settings.mechanic||'Mi taller';$('orders-count').textContent=state.orders.filter(o=>o.status==='active').length;renderCloudStatus();}
+function renderDraftFields(){for(const [id,key] of Object.entries({'client':'client','discount':'discount','commission':'commission'}))$(id).value=state.draft[key]||(['discount','commission'].includes(key)?0:'');}
+function refresh(){renderServices();renderOrder();renderClientPicker();if(currentView==='clients')renderClients();$('mechanic-label').textContent=state.settings.mechanic||'Mi taller';$('orders-count').textContent=state.orders.filter(o=>o.status==='active').length;renderCloudStatus();}
+function renderClientPicker(){
+  const clients=frequentClients(state.orders),query=clientKey(state.draft.client);
+  $('client-names').innerHTML=clients.map(c=>`<option value="${esc(c.name)}">${c.visits} ${c.visits===1?'visita':'visitas'}</option>`).join('');
+  const matches=clients.filter(c=>!query||c.key.includes(query)).slice(0,5);
+  $('frequent-client-picker').innerHTML=matches.length?matches.map(c=>`<button type="button" class="client-chip" data-client="${esc(c.key)}" aria-label="Seleccionar a ${esc(c.name)}"><span>${esc(c.name)}</span><small>${c.visits} ${c.visits===1?'visita':'visitas'}</small></button>`).join(''):`<p class="clients-hint">${clients.length?'No hay coincidencias. Puedes registrar un nombre nuevo.':'Los clientes aparecerán aquí al registrar servicios.'}</p>`;
+}
+function renderClients(){
+  const all=frequentClients(state.orders),query=clientKey($('client-search').value),clients=all.filter(c=>c.key.includes(query));
+  $('clients-description').textContent=cloud?.isAdmin?'Clientes del taller, ordenados por visitas.':'Tus clientes, ordenados por visitas.';
+  $('clients-total').textContent=all.length+' '+(all.length===1?'cliente':'clientes');
+  $('clients-list').innerHTML=clients.length?`<div class="table-panel"><table><thead><tr><th>Cliente</th><th>Visitas</th><th>Última visita</th><th>Total en servicios</th><th></th></tr></thead><tbody>${clients.map(c=>`<tr><td><strong>${esc(c.name)}</strong></td><td data-label="Visitas">${c.visits}</td><td data-label="Última visita">${shortDate(c.lastVisit)}</td><td data-label="Total en servicios">${euro(c.total)}</td><td><button class="row-button" data-client="${esc(c.key)}">Usar en orden ↗</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state"><span>${icon('user')}</span><h2>${all.length?'No encontramos ese cliente.':'Cada visita cuenta.'}</h2><p>${all.length?'Prueba con otro nombre.':'La lista se crea automáticamente con tus servicios cobrados. Las órdenes anuladas no cuentan.'}</p><button class="button primary" data-go-calculator>Preparar una orden ↗</button></div>`;
+}
+function selectClient(key){
+  const client=frequentClients(state.orders).find(c=>c.key===key);if(!client)return;
+  state.draft.client=client.name;persist();renderDraftFields();renderClientPicker();
+  if(currentView!=='calculator')setView('calculator');$('client').focus({preventScroll:true});
+}
 function add(id){const service=state.catalog.find(i=>i.id===id);if(!service)return;const old=state.draft.items.find(i=>i.id===id),result=addToOrder(state.draft.items,service);state.draft.items=result.items;persist();refresh();if(result.replaced.length)toast(`${service.name} reemplazó ${result.replaced.map(i=>i.name).join(', ')}.`);else if(service.exclusive&&old)toast('Esta configuración ya está en la orden.');}
 function setView(view){
   if(view==='team'&&!cloud?.isAdmin){openAccount();return;}
   currentView=view;document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id==='view-'+view));document.querySelectorAll('[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===view));
-  $('breadcrumb-current').textContent=({calculator:'Calculadora',orders:cloud?.isAdmin?'Órdenes del taller':'Mis órdenes',catalog:'Tarifario',summary:'Resumen',team:'Equipo'})[view];$('mobile-total').classList.toggle('no-mobile-total',view!=='calculator');
-  if(view==='orders')renderOrders();if(view==='catalog')renderPrices();if(view==='summary')renderSummary();if(view==='team')renderTeam();history.replaceState(null,'','#'+view);window.scrollTo({top:0,behavior:'instant'});
+  $('breadcrumb-current').textContent=({calculator:'Calculadora',orders:cloud?.isAdmin?'Órdenes del taller':'Mis órdenes',catalog:'Tarifario',clients:'Clientes frecuentes',summary:'Resumen',team:'Equipo'})[view];$('mobile-total').classList.toggle('no-mobile-total',view!=='calculator');
+  if(view==='clients')renderClients();if(view==='orders')renderOrders();if(view==='catalog')renderPrices();if(view==='summary')renderSummary();if(view==='team')renderTeam();history.replaceState(null,'','#'+view);window.scrollTo({top:0,behavior:'instant'});
 }
 function modal(title,body,footer=''){if($('modal').open)$('modal').close();$('modal-content').innerHTML=`<div class="modal-head"><h2>${title}</h2><button class="icon-button" data-close aria-label="Cerrar">${icon('close')}</button></div><div class="modal-body">${body}</div>${footer?`<div class="modal-footer">${footer}</div>`:''}`;$('modal').showModal();}
 function confirmAction(title,description,action,label='Continuar'){
   modal(title,`<p>${description}</p>`,`<button class="button secondary" data-close>Cancelar</button><button class="button primary" id="confirm-action">${label}</button>`);
   $('confirm-action').onclick=async e=>{const button=e.currentTarget;button.disabled=true;try{await action();if($('modal').open)$('modal').close();}catch(error){toast(errorText(error));button.disabled=false;}};
 }
-function clearDraft(){state.draft={items:[],client:'',playerId:'',discount:0,commission:Number(state.settings.commission)||0};persist();renderDraftFields();refresh();}
+function clearDraft(){state.draft={items:[],client:'',discount:0,commission:Number(state.settings.commission)||0};persist();renderDraftFields();refresh();}
 async function copyText(text){try{await navigator.clipboard.writeText(text);toast('Ticket copiado. Listo para pegar en FiveM.');}catch{modal('Tu ticket de servicio',`<p>Copia el texto para pegarlo en el chat.</p><textarea class="receipt-text" id="manual-copy" style="width:100%;height:310px" readonly>${esc(text)}</textarea>`,`<button class="button secondary" data-close>Cerrar</button>`);$('manual-copy').select();}}
 function openCheckout(){
   if(!state.draft.items.length)return;
   if(!cloud?.isActive){openAccount();return;}
   const t=snapshot().totals;
-  modal('Listo para salir a las calles.',`<div class="checkout-summary"><span>${t.units} servicios · Total a cobrar</span><strong>${euro(t.total)}</strong></div>${t.net<0?'<div class="notice">El descuento deja esta orden con pérdida. Revisa el importe antes de registrar.</div>':''}<form id="checkout-form"><div class="form-grid"><label>Cliente *<input name="client" maxlength="80" value="${esc(state.draft.client)}" required placeholder="Nombre del cliente"></label><label>ID del jugador<input name="playerId" maxlength="20" value="${esc(state.draft.playerId)}" placeholder="Opcional"></label></div><label>Método de pago<select name="payment"><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option></select></label><label>Notas del trabajo<textarea name="notes" maxlength="500" rows="2" placeholder="Piezas instaladas, observaciones…"></textarea></label><p class="modal-hint">El servicio quedará guardado en el taller. Verifica el pago dentro del juego antes de confirmar.</p><div class="form-message" id="checkout-message" role="alert"></div></form>`,`<button class="button secondary" data-close>Volver</button><button class="button primary" type="submit" form="checkout-form">${icon('check')}Confirmar y registrar</button>`);
+  modal('Listo para salir a las calles.',`<div class="checkout-summary"><span>${t.units} servicios · Total a cobrar</span><strong>${euro(t.total)}</strong></div>${t.net<0?'<div class="notice">El descuento deja esta orden con pérdida. Revisa el importe antes de registrar.</div>':''}<form id="checkout-form"><label>Cliente *<input name="client" maxlength="80" value="${esc(state.draft.client)}" required list="client-names" autocomplete="off" placeholder="Nombre del cliente"></label><label>Método de pago<select name="payment"><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option></select></label><label>Notas del trabajo<textarea name="notes" maxlength="500" rows="2" placeholder="Piezas instaladas, observaciones…"></textarea></label><p class="modal-hint">El servicio quedará guardado en el taller. Verifica el pago dentro del juego antes de confirmar.</p><div class="form-message" id="checkout-message" role="alert"></div></form>`,`<button class="button secondary" data-close>Volver</button><button class="button primary" type="submit" form="checkout-form">${icon('check')}Confirmar y registrar</button>`);
   const requestId=crypto.randomUUID();
   $('checkout-form').onsubmit=async e=>{
     e.preventDefault();const form=e.currentTarget;if(form.dataset.saving)return;const data=new FormData(form),client=String(data.get('client')).trim();if(!client){toast('Indica el nombre del cliente.');return;}
     form.dataset.saving='true';const button=document.querySelector('[form="checkout-form"]');button.disabled=true;$('checkout-message').textContent='Guardando servicio…';
     try{
-      const order=await cloud.createOrder({...snapshot(),id:requestId,client,playerId:String(data.get('playerId')).trim(),payment:String(data.get('payment')),notes:String(data.get('notes')).trim()});
+      const order=await cloud.createOrder({...snapshot(),id:requestId,client,payment:String(data.get('payment')),notes:String(data.get('notes')).trim()});
       state.orders=state.orders.filter(o=>o.id!==order.id);state.orders.unshift(order);clearDraft();$('modal').close();toast(`Servicio ${order.folio} registrado. ${euro(order.totals.total)}.`);openDetail(order.id);cloud.load();
     }catch(error){
       if(/TARIFA_CAMBIADA/.test(error?.message||'')){await cloud.load();state.draft.items=state.draft.items.map(i=>({...state.catalog.find(s=>s.id===i.id),qty:i.qty}));persist();renderOrder();$('modal').close();toast('Las tarifas cambiaron. Revisa el total actualizado antes de cobrar.');}
@@ -248,11 +286,11 @@ function openCheckout(){
   };
 }
 function periodMatches(order,period){if(period==='all')return true;const now=new Date(),date=new Date(order.date),start=new Date(now.getFullYear(),now.getMonth(),now.getDate());if(period==='week')start.setDate(start.getDate()-((start.getDay()+6)%7));if(period==='month')start.setDate(1);return date>=start&&date<=now;}
-function filteredOrders(){const query=$('order-search').value.toLocaleLowerCase('es').trim();return state.orders.filter(o=>periodMatches(o,$('order-period').value)&&[o.folio,o.client,o.playerId,o.mechanic].join(' ').toLocaleLowerCase('es').includes(query));}
+function filteredOrders(){const query=$('order-search').value.toLocaleLowerCase('es').trim();return state.orders.filter(o=>periodMatches(o,$('order-period').value)&&[o.folio,o.client,o.mechanic].join(' ').toLocaleLowerCase('es').includes(query));}
 function shortDate(date){return new Intl.DateTimeFormat('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(date));}
 function renderOrders(){
   const orders=filteredOrders();$('export-orders').disabled=!orders.length;
-  $('orders-list').innerHTML=orders.length?`<div class="table-panel"><table><thead><tr><th>Folio / Fecha</th><th>Cliente / ID</th><th>Mecánico</th><th>Total</th><th>Ganancia</th><th>Estado</th><th></th></tr></thead><tbody>${orders.map(o=>`<tr><td><strong>${esc(o.folio)}</strong><small>${shortDate(o.date)}</small></td><td>${esc(o.client)}<small>${o.playerId?'ID '+esc(o.playerId):''}</small></td><td>${esc(o.mechanic||'Sin indicar')}</td><td>${euro(o.totals.total)}</td><td class="margin-price">${euro(o.totals.net)}</td><td><span class="status-pill ${o.status==='cancelled'?'cancelled':''}">${o.status==='active'?'Cobrado':'Anulado'}</span></td><td><button class="row-button" data-detail="${esc(o.id)}">Ver orden ↗</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state"><span>${icon('clipboard')}</span><h2>${state.orders.length?'Sin resultados para este filtro.':'El próximo proyecto empieza aquí.'}</h2><p>${state.orders.length?'Prueba otro nombre, ID o período.':cloud?.isActive?'Registra tu primer servicio desde la calculadora.':'Accede con tu cuenta para consultar tus órdenes del taller.'}</p><button class="button primary" ${cloud?.isActive?'data-go-calculator':'data-open-account'}>${cloud?.isActive?'Abrir calculadora':'Acceder al taller'} ↗</button></div>`;
+  $('orders-list').innerHTML=orders.length?`<div class="table-panel"><table><thead><tr><th>Folio / Fecha</th><th>Cliente</th><th>Mecánico</th><th>Total</th><th>Ganancia</th><th>Estado</th><th></th></tr></thead><tbody>${orders.map(o=>`<tr><td><strong>${esc(o.folio)}</strong><small>${shortDate(o.date)}</small></td><td>${esc(o.client)}</td><td>${esc(o.mechanic||'Sin indicar')}</td><td>${euro(o.totals.total)}</td><td class="margin-price">${euro(o.totals.net)}</td><td><span class="status-pill ${o.status==='cancelled'?'cancelled':''}">${o.status==='active'?'Cobrado':'Anulado'}</span></td><td><button class="row-button" data-detail="${esc(o.id)}">Ver orden ↗</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state"><span>${icon('clipboard')}</span><h2>${state.orders.length?'Sin resultados para este filtro.':'El próximo proyecto empieza aquí.'}</h2><p>${state.orders.length?'Prueba otro nombre o período.':cloud?.isActive?'Registra tu primer servicio desde la calculadora.':'Accede con tu cuenta para consultar tus órdenes del taller.'}</p><button class="button primary" ${cloud?.isActive?'data-go-calculator':'data-open-account'}>${cloud?.isActive?'Abrir calculadora':'Acceder al taller'} ↗</button></div>`;
 }
 function openDetail(id){
   const order=state.orders.find(o=>o.id===id);if(!order)return;
@@ -272,7 +310,7 @@ function renderSummary(){
 }
 function download(name,body,type){const blob=new Blob([body],{type}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function csvCell(value){const text=String(value??'');return '"'+(/^[\s]*[=+@-]/.test(text)?"'"+text:text).replace(/"/g,'""')+'"';}
-function exportCsv(){const rows=[['Folio','Fecha UTC','Cliente','ID','Mecánico','Pago','Subtotal EUR','Descuento EUR','Total EUR','Costo EUR','Comisión EUR','Ganancia EUR','Estado'],...filteredOrders().map(o=>[o.folio,o.date,o.client,o.playerId,o.mechanic,o.payment,o.totals.subtotal,o.totals.discount,o.totals.total,o.totals.cost,o.totals.commission,o.totals.net,o.status==='active'?'Cobrado':'Anulado'])];download('bennys-ordenes.csv','\uFEFF'+rows.map(row=>row.map(csvCell).join(';')).join('\r\n'),'text/csv;charset=utf-8');toast('Historial exportado con los filtros actuales.');}
+function exportCsv(){const rows=[['Folio','Fecha UTC','Cliente','Mecánico','Pago','Subtotal EUR','Descuento EUR','Total EUR','Costo EUR','Comisión EUR','Ganancia EUR','Estado'],...filteredOrders().map(o=>[o.folio,o.date,o.client,o.mechanic,o.payment,o.totals.subtotal,o.totals.discount,o.totals.total,o.totals.cost,o.totals.commission,o.totals.net,o.status==='active'?'Cobrado':'Anulado'])];download('bennys-ordenes.csv','\uFEFF'+rows.map(row=>row.map(csvCell).join(';')).join('\r\n'),'text/csv;charset=utf-8');toast('Historial exportado con los filtros actuales.');}
 function openSettings(){
   const locked=Boolean(cloud?.user&&!cloud.isAdmin);
   modal('Tu taller, a tu manera.',`<form id="settings-form"><label>Nombre del mecánico<input name="mechanic" maxlength="80" value="${esc(state.settings.mechanic)}" placeholder="Tu nombre dentro del taller" ${locked?'readonly':''}></label><label>Comisión predeterminada (%)<input name="commission" type="number" min="0" max="100" step="0.1" value="${state.settings.commission||0}" required ${locked?'readonly':''}></label><p class="modal-hint">La comisión se calcula sobre la ganancia positiva después del descuento.${locked?' Tu administrador gestiona el nombre y el porcentaje de tu cuenta.':''}</p><div class="form-message" id="settings-message" role="alert"></div></form><div class="sidebar-rule" style="margin:20px 0"></div><p><strong>Respaldo de tu taller</strong><br>${cloud?.isActive?'Las ventas y tarifas están en Supabase. Puedes exportar un respaldo de los datos a los que tienes acceso.':'La cotización se conserva en este navegador. Accede al taller para guardar tus servicios en Supabase.'}</p><div class="backup-buttons"><button class="button secondary" id="backup-export">${icon('download')}Exportar respaldo</button><button class="button secondary" id="backup-import" ${cloud?.user?'disabled title="Cierra sesión para importar un respaldo local"':''}>Importar respaldo local</button><input id="backup-file" type="file" accept=".json,application/json" hidden></div>${cloud?.user?'<p class="modal-hint" style="margin-top:15px">Los respaldos locales no reemplazan las órdenes guardadas en Supabase.</p>':''}`,`<button class="button secondary" data-close>Cerrar</button><button type="submit" form="settings-form" class="button primary">Guardar configuración</button>`);
@@ -288,7 +326,7 @@ function openSettings(){
   $('backup-import').onclick=()=>$('backup-file').click();
   $('backup-file').onchange=async e=>{const file=e.target.files?.[0];if(!file||cloud?.user)return;try{if(file.size>10000000)throw Error();const parsed=JSON.parse(await file.text());if(!validState(parsed))throw Error();confirmAction('Importar respaldo local',`Este respaldo contiene <strong>${parsed.orders.length} órdenes locales</strong>. Reemplazará el guardado local de este navegador.`,()=>{const old=state;state=sanitizeState(parsed);if(!persist()){state=old;throw Error('No se pudo guardar el respaldo.');}renderDraftFields();refresh();setView(currentView);toast('Respaldo local importado.');},'Importar y reemplazar');}catch{toast('El archivo no es un respaldo válido de Benny’s.');}};
 }
-function showHelp(){modal('Bienvenido a Benny’s.',`<p>Una calculadora de taller para las calles de Los Santos.</p><ol class="help-list"><li>Indica el cliente y su ID, o empieza a cotizar directamente.</li><li>Agrega servicios. Motor, tracción y neumáticos admiten una sola configuración.</li><li>Revisa total, costo y ganancia. La comisión se aplica a la ganancia positiva tras descuentos.</li><li>Copia el ticket para FiveM o registra el servicio cuando hayas verificado el pago.</li></ol><p><strong>Tu cuenta del taller:</strong> el administrador activa empleados, asigna comisiones y gestiona tarifas. Cada mecánico consulta sus ventas; el administrador ve las de todo el taller.</p><p class="modal-hint">Pulsa / para buscar servicios. Las cotizaciones se guardan localmente; los servicios registrados se guardan en Supabase.</p>`,`<button class="button secondary" data-close>Cerrar</button><button class="button primary" id="help-account">Mi cuenta ↗</button>`);$('help-account').onclick=openAccount;}
+function showHelp(){modal('Bienvenido a Benny’s.',`<p>Una calculadora de taller para las calles de Los Santos.</p><ol class="help-list"><li>Escribe el nombre del cliente o selecciónalo en Clientes frecuentes.</li><li>Agrega servicios. Motor, tracción y neumáticos admiten una sola configuración.</li><li>Revisa total, costo y ganancia. La comisión se aplica a la ganancia positiva tras descuentos.</li><li>Copia el ticket para FiveM o registra el servicio cuando hayas verificado el pago.</li></ol><p><strong>Tu cuenta del taller:</strong> el administrador activa empleados, asigna comisiones y gestiona tarifas. Cada mecánico consulta sus ventas; el administrador ve las de todo el taller.</p><p class="modal-hint">Pulsa / para buscar servicios. Las cotizaciones se guardan localmente; los servicios registrados se guardan en Supabase.</p>`,`<button class="button secondary" data-close>Cerrar</button><button class="button primary" id="help-account">Mi cuenta ↗</button>`);$('help-account').onclick=openAccount;}
 
 function renderCloudStatus(){
   const status=cloud?.loading?'Sincronizando…':cloud?.error?'Conexión pendiente':cloud?.isActive?'Sincronizado con el taller':cloud?.user?'Cuenta pendiente de activación':'Cotización local';
@@ -352,7 +390,7 @@ document.querySelectorAll('[data-view]').forEach(button=>button.onclick=()=>setV
 $('services-grid').onclick=e=>{const button=e.target.closest('[data-add]');if(button)add(button.dataset.add);};
 $('categories').onclick=e=>{const button=e.target.closest('[data-category]');if(!button)return;category=button.dataset.category;document.querySelectorAll('[data-category]').forEach(c=>{c.classList.toggle('active',c===button);c.setAttribute('aria-pressed',String(c===button));});renderServices();};
 $('service-search').oninput=renderServices;
-for(const [id,key] of Object.entries({'client':'client','player-id':'playerId'}))$(id).oninput=e=>{state.draft[key]=e.target.value;persist();};
+for(const [id,key] of Object.entries({'client':'client'}))$(id).oninput=e=>{state.draft[key]=e.target.value;persist();renderClientPicker();};
 for(const key of ['discount','commission']){$(key).oninput=e=>{if(key==='commission'&&cloud?.user&&!cloud.isAdmin){e.target.value=state.draft.commission;return;}const value=Number(e.target.value);state.draft[key]=Math.max(0,Math.min(100,Number.isFinite(value)?value:0));persist();renderOrder();};$(key).onblur=()=>$(key).value=state.draft[key];}
 $('order-items').onclick=e=>{const remove=e.target.closest('[data-remove]'),quantity=e.target.closest('[data-qty]');if(remove)state.draft.items=state.draft.items.filter(i=>i.id!==remove.dataset.remove);else if(quantity){const item=state.draft.items.find(i=>i.id===quantity.dataset.qty);if(!item)return;const value=item.qty+Number(quantity.dataset.delta);if(value<1)state.draft.items=state.draft.items.filter(i=>i.id!==item.id);else item.qty=Math.min(item.exclusive?1:999,value);}else return;persist();refresh();};
 $('order-items').onchange=e=>{const input=e.target.closest('[data-quantity]');if(!input)return;const item=state.draft.items.find(i=>i.id===input.dataset.quantity),value=Number(input.value);if(!item)return;if(!Number.isInteger(value)||value<1||value>999){toast('La cantidad debe ser un entero entre 1 y 999.');renderOrder();return;}item.qty=item.exclusive?1:value;persist();refresh();};
@@ -363,13 +401,14 @@ $('settings-button').onclick=openSettings;$('profile-button').onclick=openAccoun
 $('sync-button').onclick=async()=>{if(cloud){await cloud.load();toast(cloud.error?errorText(cloud.error):'Datos del taller actualizados.');}};
 $('team-refresh').onclick=()=>cloud?.load();
 $('modal').onclick=e=>{if(e.target.closest('[data-close]'))$('modal').close();else if(e.target===$('modal')){const rect=$('modal').getBoundingClientRect();if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)$('modal').close();}};
-document.addEventListener('click',e=>{const detail=e.target.closest('[data-detail]'),employee=e.target.closest('[data-employee]');if(detail)openDetail(detail.dataset.detail);if(employee)editEmployee(employee.dataset.employee);if(e.target.closest('[data-go-calculator]'))setView('calculator');if(e.target.closest('[data-open-account]'))openAccount();});
+document.addEventListener('click',e=>{const detail=e.target.closest('[data-detail]'),employee=e.target.closest('[data-employee]');if(detail)openDetail(detail.dataset.detail);if(employee)editEmployee(employee.dataset.employee);const client=e.target.closest('[data-client]');if(client)selectClient(client.dataset.client);if(e.target.closest('[data-go-calculator]'))setView('calculator');if(e.target.closest('[data-open-account]'))openAccount();});
+$('client-search').oninput=renderClients;$('show-clients').onclick=()=>setView('clients');
 $('order-search').oninput=renderOrders;$('order-period').onchange=renderOrders;$('summary-period').onchange=renderSummary;$('export-orders').onclick=exportCsv;
 $('price-table').onchange=async e=>{const input=e.target.closest('[data-price]');if(!input)return;const item=state.catalog.find(i=>i.id===input.dataset.price),value=Number(input.value);if(!cloud?.isAdmin||!input.value.trim()||!Number.isFinite(value)||value<0||value>100000000){input.value=item[input.dataset.field];toast('Solo el administrador puede guardar tarifas válidas.');return;}input.disabled=true;try{const saved=await cloud.saveService({...item,[input.dataset.field]:Math.round(value*100)/100});item.cost=Number(saved.cost);item.price=Number(saved.price);persist();$('margin-'+item.id).textContent=euro(item.price-item.cost);renderServices();toast('Tarifa guardada para todo el taller.');}catch(error){input.value=item[input.dataset.field];toast(errorText(error));}finally{if(input.isConnected)input.disabled=false;}};
 $('restore-prices').onclick=()=>{if(!cloud?.isAdmin)return;confirmAction('Restaurar el tarifario original','Se recuperarán los 18 precios de tu tabla. Las órdenes registradas conservarán sus importes.',async()=>{let saved=0;try{for(const service of CATALOG){await cloud.saveService(service);saved++;}await cloud.load();renderPrices();toast('Tarifario original restaurado.');}catch(error){await cloud.load();renderPrices();throw Error(`${saved} tarifas restauradas. ${errorText(error)}`);}},'Restaurar tarifas');};
 $('mobile-ticket').onclick=()=>document.querySelector('.order-panel').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'instant':'smooth',block:'start'});
 document.addEventListener('keydown',e=>{if(e.key==='/'&&!$('modal').open&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();setView('calculator');$('service-search').focus();}});
-const hash=location.hash.slice(1);if(['calculator','orders','catalog','summary'].includes(hash))setView(hash);
+const hash=location.hash.slice(1);if(['calculator','orders','clients','catalog','summary'].includes(hash))setView(hash);
 try{cloud=new BennysCloud(cloudChanged);renderCloudStatus();}catch(error){$('cloud-status-text').textContent='Conexión no disponible';toast(errorText(error));}
 
 })();
