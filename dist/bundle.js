@@ -299,8 +299,36 @@ class ManagementPanel{
   auditDetail(row){const d=row.details||{};return [d.label,d.client,Number.isFinite(Number(d.amount))&&d.amount!=null?euro(Number(d.amount)):null,d.reason?`Motivo: ${d.reason}`:null,d.oldPrice!=null?`Precio: ${euro(Number(d.oldPrice))} → ${euro(Number(d.price))} · Costo: ${euro(Number(d.oldCost))} → ${euro(Number(d.cost))}`:null,d.role?`Rol: ${d.role==='admin'?'Administrador':'Mecánico'} · ${d.active?'Activo':'Inactivo'} · Comisión: ${Number(d.commission)}%`:null].filter(Boolean).join(' · ')||'Cambio registrado';}
 }
 
+// El ambiente se puede pausar sin afectar la sincronización ni las ventas.
+function initAtmosphere(){
+  const preference=window.matchMedia('(prefers-reduced-motion: reduce)');
+  const buttons=[...document.querySelectorAll('[data-ambient-toggle]')];
+  let paused=false;
+  try{paused=localStorage.getItem('bennys-ambient-paused')==='true';}catch{}
+  const render=()=>{
+    const stopped=paused||preference.matches;
+    document.body.classList.toggle('effects-paused',stopped);
+    for(const button of buttons){
+      button.setAttribute('aria-pressed',String(!stopped));
+      button.setAttribute('aria-label',preference.matches?'Movimiento reducido del dispositivo':stopped?'Activar efectos de ambiente':'Pausar efectos de ambiente');
+      button.title=button.getAttribute('aria-label');
+      button.disabled=preference.matches;
+      const text=button.querySelector('[data-ambient-label]');
+      if(text)text.textContent=preference.matches?'Movimiento reducido':stopped?'Activar ambiente':'Pausar ambiente';
+    }
+  };
+  for(const button of buttons)button.addEventListener('click',()=>{
+    paused=!paused;
+    try{localStorage.setItem('bennys-ambient-paused',String(paused));}catch{}
+    render();
+  });
+  preference.addEventListener('change',render);
+  render();
+}
+
 
 const $=id=>document.getElementById(id);
+initAtmosphere();
 const GUEST_KEY='bennys-motors-v1';
 const defaultState=()=>({version:1,catalog:CATALOG.map(i=>({...i})),orders:[],next:1,settings:{mechanic:'',commission:0},draft:{items:[],client:'',discount:0,commission:0}});
 const percent=n=>Number.isFinite(n)&&n>=0&&n<=100;

@@ -4,8 +4,10 @@ import {icon,esc} from './icons.js';
 import {BennysCloud} from './cloud.js';
 import {inPeriod,salesMetrics} from './operations.js';
 import {ManagementPanel} from './management.js';
+import {initAtmosphere} from './atmosphere.js';
 
 const $=id=>document.getElementById(id);
+initAtmosphere();
 const GUEST_KEY='bennys-motors-v1';
 const defaultState=()=>({version:1,catalog:CATALOG.map(i=>({...i})),orders:[],next:1,settings:{mechanic:'',commission:0},draft:{items:[],client:'',discount:0,commission:0}});
 const percent=n=>Number.isFinite(n)&&n>=0&&n<=100;

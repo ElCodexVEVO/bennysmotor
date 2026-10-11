@@ -1,6 +1,7 @@
 {
   "checks": [
     "Acceso obligatorio del personal; sin modo público",
+    "Fondos de Halloween optimizados y ambiente pausable persistente",
     "Pantalla de carga durante la consulta real de sesión y datos",
     "18 tarifas; solo nombre del cliente",
     "Cálculos y borrador persistente",

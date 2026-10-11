@@ -1,6 +1,6 @@
 # Benny’s Motors · Gestión del taller
 
-Sistema interno de Benny’s Motors para registrar ventas, consultar clientes frecuentes y controlar comisiones, gastos y actividad. Acceso por usuario y contraseña, con administrador y empleados mediante Supabase. No solicita correo electrónico. Interfaz de escritorio y móvil con tema de Halloween, pantalla de carga y panel de inicio. HTML, CSS y JavaScript estáticos, preparados para GitHub Pages.
+Sistema interno de Benny’s Motors para registrar ventas, consultar clientes frecuentes y controlar comisiones, gastos y actividad. Acceso por usuario y contraseña, con administrador y empleados mediante Supabase. No solicita correo electrónico. Interfaz de escritorio y móvil con fondos propios de Halloween, pantalla de carga y panel de inicio. Ambiente animado con niebla, luces y partículas; se puede pausar y respeta la preferencia de movimiento reducido. Esta actualización visual no requiere cambios en Supabase. HTML, CSS y JavaScript estáticos, preparados para GitHub Pages.
 
 ## Usar
 
