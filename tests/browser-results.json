@@ -1,6 +1,8 @@
 {
   "checks": [
-    "18 tarifas; sin vehículo, matrícula ni etiqueta de la captura",
+    "Acceso obligatorio del personal; sin modo público",
+    "Pantalla de carga durante la consulta real de sesión y datos",
+    "18 tarifas; solo nombre del cliente",
     "Cálculos y borrador persistente",
     "Acceso con SDK oficial y rol administrador",
     "Registro remoto y reintento sin cobro duplicado",
@@ -12,8 +14,14 @@
     "Clientes respetan permisos y permiten buscar por nombre",
     "Anulación conservada y excluida del resumen",
     "Anular una orden actualiza la lista de clientes",
+    "Panel de control con ventas, gráfico y rendimiento real",
+    "Comisiones agrupadas por mecánico y exportación CSV",
+    "Filtros de ventas por estado, empleado y método de pago",
+    "Gastos administrativos y resultado; anulación sin borrar historial",
+    "Actividad administrativa con búsqueda y motivo de anulación",
     "Activación inicial protegida por código",
     "Diseño sin desbordamientos de 360 a 1920 px",
+    "Animaciones respetan la preferencia de movimiento reducido",
     "Sin errores JavaScript"
   ],
   "errors": []

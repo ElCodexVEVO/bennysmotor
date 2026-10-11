@@ -47,3 +47,20 @@ test('Clientes frecuentes agrupa nombres, suma visitas y excluye anulaciones',()
   assert.equal(clients[1].visits,1);assert.equal(clients[1].total,700);assert.deepEqual(orders,original);
   assert.deepEqual(frequentClients([]),[]);
 });
+
+import {inPeriod,salesMetrics,employeeMetrics,revenueSeries} from '../dist/operations.js';
+test('Los períodos usan el día local, semana desde lunes y excluyen fechas futuras',()=>{
+  const now=new Date(2026,9,11,12),d=(day,hour=0)=>new Date(2026,9,day,hour).toISOString();
+  assert.equal(inPeriod(d(11),'today',now),true);assert.equal(inPeriod(d(10,23),'today',now),false);
+  assert.equal(inPeriod(d(5),'week',now),true);assert.equal(inPeriod(d(4,23),'week',now),false);
+  assert.equal(inPeriod(d(1),'month',now),true);assert.equal(inPeriod(d(12),'all',now),false);
+  assert.equal(inPeriod('invalid','all',now),false);
+});
+test('Informes y gráfico excluyen anuladas; agrupación usa el empleado y conserva importes históricos',()=>{
+  const now=new Date(2026,9,11,12),date=new Date(2026,9,11,10).toISOString(),totals=calculate(selected(['reparacion']),0,20);
+  const orders=[{employeeId:'a',mechanic:'Nombre anterior',status:'active',date,totals},{employeeId:'b',mechanic:'Alex',status:'active',date,totals},{employeeId:'a',mechanic:'Nombre anterior',status:'cancelled',date,totals}];
+  assert.deepEqual(salesMetrics(orders),{count:2,total:2000,cost:1000,commission:200,net:800,gross:1000,discount:0,average:1000});
+  const team=employeeMetrics(orders,[{id:'a',display_name:'Mateo'}]);assert.equal(team.length,2);assert.equal(team.find(p=>p.id==='a').name,'Mateo');assert.equal(team.find(p=>p.id==='a').commission,100);
+  const points=revenueSeries(orders,'today',now);assert.equal(points.length,24);assert.equal(points[10].total,2000);assert.equal(points.reduce((n,p)=>n+p.total,0),2000);
+  assert.equal(revenueSeries([], 'week',now).length,7);assert.equal(revenueSeries([], 'month',now).length,11);assert.equal(revenueSeries([], 'all',now).length,30);
+});

@@ -9,7 +9,7 @@ export class BennysCloud {
   constructor(onChange){
     if(!globalThis.supabase?.createClient)throw Error('No se pudo cargar el cliente de Supabase.');
     this.client=globalThis.supabase.createClient(CLOUD_CONFIG.url,CLOUD_CONFIG.publishableKey,{auth:{storageKey:'bennys-auth-v1',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
-    this.onChange=onChange;this.user=null;this.profile=null;this.ready=false;this.loading=false;this.error=null;this.version=0;
+    this.initialized=false;this.lastSynced=null;this.onChange=onChange;this.user=null;this.profile=null;this.ready=false;this.loading=false;this.error=null;this.version=0;this.proReady=false;this.expenses=[];this.audit=[];
     this.client.auth.onAuthStateChange((event,session)=>{
       if(event==='INITIAL_SESSION'||event==='SIGNED_IN'||event==='SIGNED_OUT'||event==='TOKEN_REFRESHED')setTimeout(()=>this.restore(session),0);
     });
@@ -21,8 +21,8 @@ export class BennysCloud {
   get isActive(){return this.ready&&this.profile?.active;}
   async rpc(name,args={}){const {data,error}=await this.client.rpc(name,args);if(error)throw error;return Array.isArray(data)&&data.length===1?data[0]:data;}
   async restore(session){
-    const user=session?.user||null;
-    if(this.user?.id!==user?.id){this.version++;this.profile=null;this.ready=false;}
+    const user=session?.user||null;this.initialized=true;
+    if(this.user?.id!==user?.id){this.version++;this.profile=null;this.ready=false;this.expenses=[];this.audit=[];this.team=[];this.proReady=false;}
     this.user=user;
     if(!user){this.error=null;this.loading=false;this.onChange({kind:'signedout'});return;}
     await this.load();
@@ -36,14 +36,19 @@ export class BennysCloud {
       if(version!==this.version||userId!==this.user?.id)return;
       this.profile=profile;this.error=null;
       if(!profile.active){this.ready=false;this.hasAdmin=await this.rpc('bennys_has_admin');if(version!==this.version||userId!==this.user?.id)return;this.loading=false;this.onChange({kind:'pending'});return;}
-      const [services,orders,team]=await Promise.all([this.pages('bennys_services','id'),this.pages('bennys_orders','created_at'),profile.role==='admin'?this.pages('bennys_profiles','created_at'):Promise.resolve([])]);
+      const [services,orders,team,pro]=await Promise.all([this.pages('bennys_services','id'),this.pages('bennys_orders','created_at'),profile.role==='admin'?this.pages('bennys_profiles','created_at'):Promise.resolve([]),this.loadPro(profile)]);
       if(version!==this.version||userId!==this.user?.id)return;
       if(services.length!==18)throw Error('El tarifario del taller está incompleto.');
-      this.ready=true;this.loading=false;this.team=team;this.onChange({kind:'data',profile,services,orders:orders.map(orderPayload),team,userId});
+      this.ready=true;this.loading=false;this.lastSynced=new Date();this.team=team;Object.assign(this,pro);this.onChange({kind:'data',profile,services,orders:orders.map(orderPayload),team,userId});
     }catch(error){
       if(version!==this.version||userId!==this.user?.id)return;
       this.ready=false;this.loading=false;this.error=error;this.onChange({kind:'error',error});
     }
+  }
+  async loadPro(profile){
+    try{await this.rpc('bennys_pro_version');}catch(error){if(error.code==='PGRST202')return {proReady:false,expenses:[],audit:[]};throw error;}
+    const [expenses,audit]=profile.role==='admin'?await Promise.all([this.pages('bennys_expenses','created_at'),this.pages('bennys_audit','id')]):[[],[]];
+    return {proReady:true,expenses,audit};
   }
   async signIn(email,password){const {error}=await this.client.auth.signInWithPassword({email,password});if(error)throw error;}
   async signUp(name,email,password){const {data,error}=await this.client.auth.signUp({email,password,options:{data:{display_name:name},emailRedirectTo:location.protocol==='https:'?location.origin+location.pathname:undefined}});if(error)throw error;return data;}
@@ -55,7 +60,9 @@ export class BennysCloud {
     const row=await this.rpc('bennys_create_order',{p_id:order.id,p_client:order.client,p_player_id:'',p_items:order.items.map(i=>({id:i.id,qty:i.qty,price:i.price,cost:i.cost})),p_discount:order.discount,p_commission:order.commission,p_payment:order.payment,p_notes:order.notes});
     return orderPayload(row);
   }
-  async cancelOrder(id){return orderPayload(await this.rpc('bennys_cancel_order',{p_id:id}));}
+  async cancelOrder(id,reason){return orderPayload(await this.rpc(this.proReady?'bennys_void_order':'bennys_cancel_order',this.proReady?{p_id:id,p_reason:reason}:{p_id:id}));}
+  async createExpense(expense){return this.rpc('bennys_create_expense',{p_id:expense.id,p_description:expense.description,p_category:expense.category,p_amount:expense.amount});}
+  async cancelExpense(id){return this.rpc('bennys_cancel_expense',{p_id:id});}
   async saveService(service){return this.rpc('bennys_update_service',{p_id:service.id,p_cost:service.cost,p_price:service.price});}
   async saveEmployee(profile){return this.rpc('bennys_manage_employee',{p_id:profile.id,p_name:profile.display_name,p_role:profile.role,p_active:profile.active,p_commission:profile.commission});}
 }
