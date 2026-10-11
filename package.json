@@ -1,0 +1,1 @@
+{"name":"bennys-motors-calculadora","version":"2.0.0","private":true,"type":"module","scripts":{"build":"node build.mjs","test":"node --test tests/core.test.mjs tests/database.test.mjs","test:core":"node --test tests/core.test.mjs","test:browser":"node tests/browser.cjs","start":"node server.mjs"}}

@@ -1,0 +1,17 @@
+{
+  "checks": [
+    "18 tarifas; sin vehículo, matrícula ni etiqueta de la captura",
+    "Cálculos y borrador persistente",
+    "Acceso con SDK oficial y rol administrador",
+    "Registro remoto y reintento sin cobro duplicado",
+    "Activación de empleados y comisión asignada",
+    "Tarifas compartidas editables por administrador",
+    "Empleado: historial propio y tarifas de solo lectura",
+    "Ventas del empleado con su comisión",
+    "Anulación conservada y excluida del resumen",
+    "Activación inicial protegida por código",
+    "Diseño sin desbordamientos de 360 a 1920 px",
+    "Sin errores JavaScript"
+  ],
+  "errors": []
+}

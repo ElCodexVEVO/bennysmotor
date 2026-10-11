@@ -1,0 +1,36 @@
+
+const ICONS={
+  grid:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  calculator:'<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8v3H8zM8 13h1m6 0h1m-8 4h1m6 0h1"/>',
+  clipboard:'<rect x="5" y="4" width="14" height="18" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 11h6m-6 4h6m-6 3h4"/>',
+  tag:'<path d="M3 3h8l10 10-8 8L3 11z"/><circle cx="7.5" cy="7.5" r="1"/>',
+  chart:'<path d="M4 3v18h17M8 17v-5m5 5V7m5 10V4"/>',
+  settings:'<path d="m9 3 1-1h4l1 3 3 1 3-1 2 4-2 2v3l1 2-2 4-3-1-3 2-1 2H9l-1-3-3-1-2 1-2-4 2-2v-3L1 9l2-4 3 1z" transform="translate(1 0) scale(.92)"/><circle cx="12" cy="12" r="3"/>',
+  wrench:'<path d="M21 3a6 6 0 0 1-8 8L5 20a2.1 2.1 0 0 1-3-3l9-8a6 6 0 0 1 8-8l-4 4 4 2z"/><path d="m4 18 1-1"/>',
+  car:'<path d="m5 8 2-5h10l2 5M3 17v3h3v-3m12 0v3h3v-3M2 10l2-2h16l2 2v7H2zM7 13H4m16 0h-3M8 8h8"/>',
+  engine:'<path d="M6 7h11l3 4h2v7h-4l-2 3H6l-3-4v-7h3zM9 3h5m-3 0v4M1 12v5m2-3H1m7-3h6l3 4H8z"/>',
+  wheel:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.5"/><path d="m12 10.5-2-5m3 5 4-3m-4 5.5 5 2m-6 0-1 4m-1-6-5 1"/>',
+  drive:'<path d="M8 5h8M8 19h8M12 5v14"/><rect x="4" y="2" width="4" height="6" rx="1"/><rect x="16" y="2" width="4" height="6" rx="1"/><rect x="4" y="16" width="4" height="6" rx="1"/><rect x="16" y="16" width="4" height="6" rx="1"/><path d="m9 12 3-3 3 3-3 3z"/>',
+  gauge:'<path d="M4 19a10 10 0 1 1 16 0zM12 4v2M5 8l2 1m12-1-2 1M3 14h2m14 0h2m-9 2 5-7"/><circle cx="12" cy="16" r="1.5"/>',
+  smoke:'<path d="M3 19h18M5 15c-4-5 5-3 2-8M12 16c-5-5 6-5 2-12M18 16c-3-3 4-4 3-8"/>',
+  paint:'<path d="M7 7h9v14H7zM9 3h5v4m-5-4V1h7m0 4h4m-1 3h2M7 12h9m-9 5h9"/>',
+  sparkles:'<path d="m10 3 2 6 6 2-6 2-2 6-2-6-6-2 6-2zM19 2v4m-2-2h4M20 16v6m-3-3h6"/>',
+  brake:'<circle cx="11" cy="12" r="9"/><circle cx="11" cy="12" r="3"/><path d="M17 5h4v9l-4 2zM7 7h.01m-2 5h.01m2 5h.01m6 2h.01M11 5h.01"/>',
+  turbo:'<path d="M20 12a8 8 0 1 1-8-8h8V1h3v6H12a5 5 0 1 0 5 5z"/><circle cx="12" cy="12" r="2"/><path d="m10 10-2-2m6 2 2-2m-2 6 2 2m-6-2-2 2"/>',
+  kit:'<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V3h8v4M2 12h20m-12-2v5h4v-5"/>',
+  bolt:'<path d="m13 2-9 12h7l-1 8 10-13h-7z"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>',
+  search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  check:'<path d="m5 12 4 4L19 6"/>',
+  copy:'<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M5 16H3V3h13v2"/>',
+  shield:'<path d="m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6zM8 12l3 3 5-6"/>',
+  lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4m-4 4v3"/>',
+  help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4 2c-1.5 1-1.5 1-1.5 3m0 3h.01"/>',
+  download:'<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',
+  reset:'<path d="M3 10a9 9 0 1 1 1 8M3 4v6h6"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/>',
+  close:'<path d="m6 6 12 12M18 6 6 18"/>'
+};
+export const icon=n=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]||ICONS.wrench}</svg>`;
+export const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

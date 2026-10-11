@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#111315"><meta name="description" content="Tu taller. Tu estilo. Calculadora de servicios, costos y órdenes para Benny’s Motors en GTA V Roleplay.">
+  <title>Benny’s Motors — Calculadora de taller</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="assets/vendor/supabase.js"></script>
+  <script defer src="bundle.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#calculator" aria-label="Benny’s Motors, calculadora"><span class="brand-script">Benny’s<span class="brand-line"></span></span><span class="brand-sub">MOTORS & CUSTOMS</span></a>
+      <div class="workspace-label">WORKSHOP MANAGER <span>01</span></div>
+      <nav aria-label="Navegación principal">
+        <button class="nav-item active" data-view="calculator"><span data-icon="calculator"></span>Calculadora<span class="nav-arrow">↗</span></button>
+        <button class="nav-item" data-view="orders"><span data-icon="clipboard"></span>Órdenes de trabajo<span id="orders-count" class="nav-count">0</span></button>
+        <button class="nav-item" data-view="catalog"><span data-icon="tag"></span>Tarifario</button>
+        <button class="nav-item" data-view="summary"><span data-icon="chart"></span>Resumen del taller</button>
+        <button class="nav-item" data-view="team" id="team-nav" hidden><span data-icon="user"></span>Equipo</button>
+      </nav>
+      <div class="sidebar-rule"></div>
+      <div class="workspace-label">EL TALLER</div>
+      <button class="nav-item" id="settings-button"><span data-icon="settings"></span>Configuración</button>
+      <div class="sidebar-bottom"><div class="garage-mark"><span data-icon="wrench"></span><span>BUILT IN LOS SANTOS<br><strong>Made for the streets.</strong></span></div><div class="local-status"><i id="cloud-indicator" class="offline"></i><span id="cloud-status-text">Cotización local</span></div><button class="mechanic-profile" id="profile-button"><span class="avatar" data-icon="user"></span><span><strong id="mechanic-label">Mi taller</strong><small id="account-role">Perfil del mecánico</small></span><span data-icon="settings"></span></button><span class="sidebar-version">BENNY’S MOTORS · ROLEPLAY EDITION</span></div>
+    </aside>
+    <div class="main-shell">
+      <header class="topbar"><div class="breadcrumb"><span>El taller</span><span class="slash">/</span><strong id="breadcrumb-current">Calculadora</strong></div><div class="topbar-right"><span class="top-date" id="top-date"></span><button class="icon-button" id="sync-button" aria-label="Actualizar datos del taller" hidden><span data-icon="reset"></span></button><button class="account-button" id="account-button" aria-label="Cuenta del taller"><span data-icon="user"></span><span id="account-label">Acceder</span></button><button class="icon-button" id="top-settings" aria-label="Configuración del taller"><span data-icon="settings"></span></button><button class="icon-button" id="help-button" aria-label="Ayuda"><span data-icon="help"></span></button></div></header>
+      <main>
+        <section id="view-calculator" class="view active" aria-labelledby="calc-title">
+          <div class="page-heading"><div><div class="eyebrow">PRECISIÓN EN CADA DETALLE</div><h1 id="calc-title">Calculadora de taller<span>.</span></h1><p>De la primera reparación al último detalle custom.</p></div><button class="button secondary" id="new-order"><span data-icon="plus"></span>Nueva orden</button></div>
+          <div class="workspace-grid">
+            <div class="catalog-column">
+              <section class="hero"><div class="hero-copy"><span class="hero-kicker"><span></span>BENNY’S ORIGINAL MOTOR WORKS</span><h2>Tu máquina.<br>Tu <em>estilo.</em></h2><p>Nosotros nos encargamos del resto.</p><div class="hero-footer"><span>LOS SANTOS CUSTOM CULTURE</span><span>CUSTOM & PERFORMANCE ↗</span></div></div><div class="hero-label">BUILT DIFFERENT.</div></section>
+              <section class="customer-panel" aria-label="Datos del cliente"><div class="section-heading"><h2><span data-icon="user"></span>Datos de la orden</h2><span>OPCIONAL PARA COTIZAR</span></div><div class="customer-fields"><label>Cliente<input id="client" maxlength="80" placeholder="Nombre del cliente" autocomplete="off"></label><label class="id-field">ID<input id="player-id" maxlength="20" placeholder="Ej. 124" autocomplete="off"></label></div></section>
+              <div class="services-heading"><div><h2>Servicios y mejoras <span id="service-count">18</span></h2><p>Selecciona los servicios de tu próximo proyecto.</p></div><button class="text-button" id="presets-button"><span data-icon="bolt"></span>Paquetes rápidos</button></div>
+              <div class="search-wrap"><span data-icon="search"></span><input id="service-search" type="search" placeholder="Buscar servicio, pieza o mejora…" aria-label="Buscar servicios"><kbd>/</kbd></div>
+              <div class="category-tabs" id="categories" role="group" aria-label="Categorías de servicios"></div>
+              <div class="services-grid" id="services-grid"></div>
+              <div class="catalog-footnote"><span data-icon="shield"></span>Tarifas de tu servidor · Importes en euros<span>18 SERVICIOS. INFINITAS POSIBILIDADES.</span></div>
+            </div>
+            <aside class="order-panel" aria-label="Orden de trabajo"><div class="order-top"><div><div class="eyebrow">BENNY’S MOTORS</div><h2>Orden de trabajo</h2></div><span class="order-number" id="draft-folio">#BNY-001</span></div><div class="order-status"><i></i>EN PREPARACIÓN<span id="order-units">0 servicios</span></div><div id="order-items" class="order-items"></div><div class="order-controls"><label>Descuento <span class="input-suffix"><input id="discount" type="number" min="0" max="100" step="0.1" value="0" aria-label="Porcentaje de descuento"><span>%</span></span></label><label>Comisión <span class="input-suffix"><input id="commission" type="number" min="0" max="100" step="0.1" value="0" aria-label="Porcentaje de comisión"><span>%</span></span></label><small>Comisión sobre la ganancia después del descuento.</small></div><div class="totals"><div><span>Subtotal</span><strong id="subtotal">0 €</strong></div><div id="discount-row" hidden><span>Descuento</span><strong id="discount-amount">0 €</strong></div><div class="total-main"><span>Total a cobrar<small>EUR · PRECIO FINAL</small></span><strong id="total" aria-live="polite">0 €</strong></div></div><div class="profit-panel"><div><span>Costo de fábrica</span><strong id="cost">0 €</strong></div><div><span>Comisión del mecánico</span><strong id="commission-amount">0 €</strong></div><div class="profit-net"><span>Ganancia del taller</span><strong id="profit">0 €</strong></div></div><div class="order-actions"><button class="button primary" id="checkout" disabled><span data-icon="check"></span>Registrar servicio<span>↗</span></button><button class="button secondary copy-button" id="copy-ticket" disabled><span data-icon="copy"></span>Copiar ticket para FiveM</button></div><div class="ticket-foot"><span data-icon="lock"></span><span id="ticket-storage-text">Cotización guardada en este navegador</span></div></aside>
+          </div>
+        </section>
+        <section id="view-orders" class="view" aria-labelledby="orders-title"><div class="page-heading"><div><div class="eyebrow">CADA PROYECTO TIENE UNA HISTORIA</div><h1 id="orders-title">Órdenes de trabajo<span>.</span></h1><p>Consulta los servicios registrados con tu cuenta del taller.</p></div><button class="button secondary" id="export-orders"><span data-icon="download"></span>Exportar CSV</button></div><div class="list-toolbar"><div class="search-wrap"><span data-icon="search"></span><input id="order-search" type="search" placeholder="Buscar por cliente, ID o folio…" aria-label="Buscar órdenes"></div><select id="order-period" aria-label="Período de órdenes"><option value="all">Todo el historial</option><option value="today">Hoy</option><option value="week">Esta semana</option><option value="month">Este mes</option></select></div><div id="orders-list"></div></section>
+        <section id="view-catalog" class="view" aria-labelledby="catalog-title"><div class="page-heading"><div><div class="eyebrow">LAS CUENTAS, SIEMPRE CLARAS</div><h1 id="catalog-title">Tarifario del taller<span>.</span></h1><p>Tarifas compartidas del servidor. El administrador puede actualizarlas.</p></div><button class="button secondary" id="restore-prices"><span data-icon="reset"></span>Restaurar tabla original</button></div><div class="notice"><span data-icon="info"></span>Los cambios de precio se aplican a nuevas selecciones. Las órdenes registradas conservan sus importes originales.</div><div id="price-table" class="table-panel"></div></section>
+        <section id="view-summary" class="view" aria-labelledby="summary-title"><div class="page-heading"><div><div class="eyebrow">EL TRABAJO BIEN HECHO SE NOTA</div><h1 id="summary-title">Resumen del taller<span>.</span></h1><p>Resultados reales de tus órdenes activas.</p></div><select id="summary-period" aria-label="Período del resumen"><option value="today">Hoy</option><option value="week">Esta semana</option><option value="month">Este mes</option><option value="all">Todo el historial</option></select></div><div id="summary-content"></div></section>
+        <section id="view-team" class="view" aria-labelledby="team-title"><div class="page-heading"><div><div class="eyebrow">EL MOTOR DE BENNY’S</div><h1 id="team-title">Equipo del taller<span>.</span></h1><p>Gestiona el acceso y la comisión de cada mecánico.</p></div><button class="button secondary" id="team-refresh"><span data-icon="reset"></span>Actualizar</button></div><div id="team-list"></div></section>
+      </main>
+      <footer class="main-footer"><span>BENNY’S MOTORS <b>®</b> <span class="footer-divider">/</span> HECHO PARA LOS QUE VIVEN EL MOTOR.</span><span>BENNY’S MOTORS · EL TALLER</span></footer>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="modal"><div id="modal-content"></div></dialog>
+  <div class="mobile-total" id="mobile-total"><span>Orden de trabajo<strong id="mobile-total-value">0 €</strong></span><button class="button primary" id="mobile-ticket">Ver orden <span>↑</span></button></div>
+</body>
+</html>
