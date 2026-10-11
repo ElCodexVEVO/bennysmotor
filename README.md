@@ -1,6 +1,6 @@
 # Benny’s Motors · Gestión del taller
 
-Sistema interno de Benny’s Motors para registrar ventas, consultar clientes frecuentes y controlar comisiones, gastos y actividad. Acceso por usuario y contraseña, con administrador y empleados mediante Supabase. No solicita correo electrónico. Interfaz de escritorio y móvil con fondos propios de Halloween, pantalla de carga y panel de inicio. Ambiente animado con niebla, luces y partículas; se puede pausar y respeta la preferencia de movimiento reducido. Esta actualización visual no requiere cambios en Supabase. HTML, CSS y JavaScript estáticos, preparados para GitHub Pages.
+Sistema interno de Benny’s Motors para registrar ventas, consultar clientes frecuentes y controlar comisiones, gastos y actividad. Acceso por usuario y contraseña, con administrador y empleados mediante Supabase. No solicita correo electrónico. Versión 4.0: interfaz de cristal vino y carmesí con Halloween sobre fotografías del taller, acceso centrado y flotante, **emblema 3D real** (Three.js, fuente editable en `logo3d/`), panel de inicio con datos reales y diseño adaptado a móvil. Ambiente con niebla, pocas brasas y murciélagos ocasionales; se puede pausar (preferencia persistente) y respeta el movimiento reducido. Esta actualización visual **no requiere cambios en Supabase**. HTML, CSS y JavaScript estáticos, preparados para GitHub Pages.
 
 ## Usar
 
@@ -31,7 +31,8 @@ El administrador ve todas las órdenes, administra empleados y edita tarifas. Lo
 - Inicio con ventas del período, ticket promedio, comisiones, margen del taller, evolución de ventas, métodos de pago y rendimiento por mecánico. Los gráficos y cifras utilizan registros reales.
 - Pantalla de carga durante la comprobación de sesión y lectura inicial de registros; sincronización posterior en segundo plano.
 - Acceso obligatorio por usuario y contraseña. Administración crea mecánicos activos o aprueba solicitudes. Las cuentas anteriores mantienen su contraseña; el SQL devuelve su usuario asignado.
-- Tema Halloween en carbón y naranja, con murciélagos y telarañas discretos en el acceso. Transiciones de paneles, gráficos, modales y botones; respeta la preferencia de movimiento reducido.
+- Tema vino/carmesí con cristal en dos niveles (ambiente más transparente, datos más opacos), fotografías del taller con Halloween, glow carmesí solo en acciones y selección. Acceso centrado con el emblema 3D y alternativa estática coherente. Transiciones de 180–280 ms en vistas, formularios y modales; respeta `prefers-reduced-motion`. En móvil, las tablas anchas se apilan como tarjetas y el menú lateral se abre como cajón.
+- Panel de inicio («Control del taller»): métricas, evolución de ventas, clientes frecuentes, ventas recientes, actividad reciente (solo administración, procede de la auditoría real), métodos de pago y rendimiento. Las cifras que cambian por una venta o una sincronización se resaltan un instante.
 - 18 servicios del tarifario enviado por el usuario, en euros: 7 de taller, 2 motores, 3 tracciones, 3 neumáticos y 3 extras.
 - Búsqueda, categorías, cantidades y selecciones rápidas.
 - Motor, tracción y neumáticos admiten una opción por vehículo; cambiar de opción reemplaza la anterior.
@@ -83,14 +84,20 @@ Confirmar venta no verifica pagos de FiveM: el mecánico comprueba el pago dentr
 
 ## Desarrollo y comprobación
 
-`dist/catalog.js` contiene las tarifas originales, `dist/core.js` los cálculos y ticket, `dist/operations.js` los informes y períodos, `dist/cloud.js` la conexión con Supabase, `dist/management.js` los módulos de gestión y `dist/app.js` el punto de venta y acceso. `dist/halloween.css` contiene el tema de temporada y las animaciones. Tras editar JavaScript ejecuta `npm run build` para regenerar `dist/bundle.js`. HTML y CSS se editan directamente.
+`dist/catalog.js` contiene las tarifas originales, `dist/core.js` los cálculos y ticket, `dist/operations.js` los informes y períodos, `dist/cloud.js` la conexión con Supabase, `dist/management.js` los módulos de gestión (panel de inicio, comisiones, finanzas, actividad), `dist/atmosphere.js` la pausa del ambiente, `dist/brand.js` la carga diferida del emblema 3D y `dist/app.js` el punto de venta y acceso. Estilos: `dist/styles.css` (tokens, componentes y vistas), `dist/access.css` (carga y acceso) y `dist/atmosphere.css` (fondos, niebla, brasas y murciélagos). Tras editar JavaScript ejecuta `npm run build` para regenerar `dist/bundle.js`. HTML y CSS se editan directamente.
+
+### Emblema 3D
+
+Todo está en [`logo3d/`](logo3d/README.md): contornos SVG editables, parámetros, escena Three.js y herramientas. `npm run build:logo` recompila `dist/assets/logo3d/logo3d.js`; `npm run logo:assets` regenera las imágenes estáticas, el favicon y `logo3d/export/bennys-logo.glb`. El 3D es opcional: se carga de forma diferida y solo con WebGL, el render se detiene con la pestaña oculta, fuera de vista o con el ambiente pausado, y si algo falla el acceso muestra la imagen estática. `?logo=static` y `?logo=3d` en la URL sirven para depurar.
+
+Los fondos derivados (fachada recompuesta para el panel de acceso centrado, versión vertical para móvil y fondo del panel) se generan con `npm run backgrounds` a partir de las originales; ver `docs/procedencia-imagenes.md`.
 
 Para las pruebas SQL instala la dependencia de desarrollo con `npm ci --prefix tests` y ejecuta `npm test`. Usan PostgreSQL local mediante PGlite, sin tocar el proyecto real: instalación, activación por código, RLS, roles, cantidades, tarifas, cálculos, reintentos, anulación, gastos y auditoría; también comprueban que repetir la actualización conserva datos. `npm run test:core` comprueba los cálculos sin dependencias.
 
 `tests/staff.test.mjs` comprueba la función de acceso: login, creación solo por administradores, solicitudes pendientes, límites y limpieza ante fallos.
 
-`npm run test:browser` usa el SDK real con respuestas HTTP simuladas, sin crear usuarios ni ventas en producción. Comprueba acceso, equipo, cobro, reintentos, aislamiento de cuentas, informes, filtros, gastos, auditoría, carga real, creación de mecánicos, solicitudes por usuario, movimiento reducido y tamaños de 360 a 1920 píxeles. En otro equipo establece `PLAYWRIGHT_PATH` al módulo de Playwright y `EDGE_PATH` al ejecutable de un navegador Chromium. Los resultados están en `tests/browser-results.json`.
+`npm run test:browser` usa el SDK real con respuestas HTTP simuladas (`tests/mock-backend.cjs`), sin crear usuarios ni ventas en producción. Comprueba acceso, centrado del panel, teclado y foco, errores con texto e icono, contraste sobre el cristal, emblema 3D (carga diferida, pausa, pestaña oculta, fuera de vista, liberación al entrar, sin WebGL, módulo bloqueado, movimiento reducido), equipo, cobro, reintentos, aislamiento de cuentas, informes, filtros, gastos, auditoría, carga real, creación de mecánicos, solicitudes por usuario y tamaños de 360 a 1920 píxeles en todas las vistas. En otro equipo establece `PLAYWRIGHT_PATH` al módulo de Playwright y `EDGE_PATH` al ejecutable de un navegador Chromium. Las capturas se guardan en `preview/` (o en `CAPTURES_DIR`) y los resultados en `tests/browser-results.json`.
 
 ## Recursos visuales
 
-El tema actual utiliza gráficos vectoriales y CSS. Se conserva la ilustración de la versión anterior en `dist/assets/garage.webp` y su prompt en `docs/garage-prompt.txt`. Tipografías locales Barlow Condensed, DM Sans y Yellowtail, distribuidas con sus licencias en `dist/assets/fonts`.
+Fondos de Halloween basados en fotografías del taller (`dist/assets/halloween/`), el emblema 3D (`logo3d/`) y su versión estática (`dist/assets/logo3d/`). Origen y prompts: [docs/procedencia-imagenes.md](docs/procedencia-imagenes.md) y [docs/halloween-art-direction.md](docs/halloween-art-direction.md). Tipografías locales DM Sans y Source Serif 4 (OFL), con sus licencias en `dist/assets/fonts`; los contornos del emblema proceden de Yellowtail (Apache 2.0) y Barlow Condensed (OFL), ver `logo3d/licencias/`. `dist/assets/garage.webp` y `docs/garage-prompt.txt` son de la versión anterior y ya no se usan.

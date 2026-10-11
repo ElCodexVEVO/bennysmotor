@@ -1,16 +1,40 @@
-# Fondos de Halloween
+# Dirección visual · cristal vino, Halloween y taller real
 
-Generados con la herramienta integrada ImageGen; optimizados a WebP para la web.
+Sustituye a la dirección anterior (carbón y naranja). Las decisiones de diseño son del usuario y son obligatorias:
 
-- Acceso: `dist/assets/halloween/bennys-exterior.webp`
-- Panel y carga: `dist/assets/halloween/bennys-workshop.webp`
+- Predominio de vino, negro y rojo carmesí. El naranja se limita a la luz natural de algunas calabazas (dentro de las fotografías).
+- Estética limpia y futurista: sin maquinaria pesada, acero, tornillos ni engranajes decorativos.
+- Halloween tradicional: calabazas, luna, niebla, murciélagos y telarañas. Sin Día de Muertos ni calaveras.
+- Sin el pie «Los Santos / Motors & Customs» ni su línea decorativa en el acceso, el panel o el móvil.
+- Acceso por usuario y contraseña (sin correo). Clientes solo por nombre.
 
-## Prompts finales
+## Paleta
 
-### Acceso
+| Uso | Valor |
+|---|---|
+| Obsidiana (base) | `#100B10` |
+| Vino oscuro | `#35101E` |
+| Vino | `#751C39` |
+| Carmesí (acciones) | `#BE354E` |
+| Hueso (texto) | `#F3ECEE` |
+| Carmesí claro para texto/iconos sobre cristal | `#ff6d8a` |
 
-Use case: stylized-concept. Asset type: full-screen background image for a premium automotive workshop staff login page, 16:9 landscape, 1920x1080 composition. Scene: Benny's Motors custom-car garage in the industrial district of Los Santos at midnight on Halloween. A dark customized lowrider parked at an angle in the LEFT HALF, bright carved jack-o-lantern pumpkins on oil drums and beside the garage entrance, subtle cobwebs on brick corners, overhead orange festoon lights, wet asphalt reflecting amber and muted violet light, wisps of ground fog, tiny bats against a moonlit sky. Sophisticated high-end GTA V cinematic game environment render with realistic materials, carefully composed, no people, no gore. Let the left half clearly show the car and pumpkins; right third is darker, simple, quiet garage wall where a login form will overlay. Leave dark negative space across the upper left for an actual HTML brand. Pumpkin orange, charcoal, midnight blue, restrained violet. Strong automotive identity, unmistakably Halloween, atmospheric not childish, no Day of the Dead motifs, no skulls, no marigolds, no text, no logos, no watermark. Create the background artwork only, no UI, no layout mockup.
+Los errores se distinguen con texto e icono, no solo con color. Los estados cobrados usan un verde discreto.
 
-### Panel
+## Cristal en dos niveles
 
-Use case: stylized-concept. Asset type: cinematic panoramic background/banner for an automotive workshop operations dashboard, wide landscape 16:9. Interior of Benny's Motors custom automotive workshop at midnight, Halloween decoration. A beautifully detailed deep-black modified muscle car on the RIGHT HALF under a vehicle lift, warm orange overhead industrial lights, carved glowing pumpkins on a steel workbench in the right foreground, tool drawers, concrete and brick, a few discreet cobwebs, soft violet light through high windows, thin ground fog, cables and mechanics' equipment. The LEFT THIRD is a quiet dark garage interior with negative space where white HTML heading will overlay. High-end GTA V cinematic game environment rendering, sharp professional art direction, tangible industrial materials, eye-level wide lens, orange and cool charcoal palette, readable silhouettes, no people, no text, no logos, no watermark. Unmistakable traditional Halloween only: jack-o-lanterns, moonlight, bats and cobwebs, no Day of the Dead, no decorative skulls. Background artwork only, no UI mockup.
+- **Ambiente** (barra lateral, cabecera, banda de métricas): ≈ 64 % de opacidad con desenfoque real (`backdrop-filter`).
+- **Datos** (tablas, resúmenes, formularios): ≈ 86 % de opacidad. El fondo del panel (`bennys-panel-fondo.webp`) ya llega desenfocado y oscurecido, de modo que no se recalcula un desenfoque por superficie.
+- Glow carmesí solo en acciones, selección e iconos. Sin parpadeos ni destellos rápidos.
+
+## Tipografía
+
+DM Sans para la interfaz (cifras tabulares), Source Serif 4 600 para el titular del acceso. El lettering del emblema procede de Yellowtail (Apache 2.0) y Barlow Condensed (OFL 1.1); ver `logo3d/`.
+
+## Movimiento
+
+Transiciones de 180–280 ms, solo `transform` y `opacity` en lo posible; entrada escalonada de vistas únicamente al abrirlas (no en cada sincronización). El panel de acceso flota 6 px y se detiene al enfocar un campo. Pausa persistente (`bennys-ambient-paused`), `prefers-reduced-motion` respetado, render 3D detenido con la pestaña oculta o fuera de vista.
+
+## Recursos
+
+Ver `docs/procedencia-imagenes.md` (origen y prompts) y `logo3d/README.md` (emblema 3D editable).

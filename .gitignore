@@ -6,3 +6,5 @@ docs/tarifario-original.png
 .env
 .env.*
 !.env.example
+.impeccable/
+logo3d/.cache/

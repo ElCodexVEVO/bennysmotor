@@ -129,10 +129,28 @@ const ICONS={
   download:'<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',
   reset:'<path d="M3 10a9 9 0 1 1 1 8M3 4v6h6"/>',
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/>',
-  close:'<path d="m6 6 12 12M18 6 6 18"/>'
+  close:'<path d="m6 6 12 12M18 6 6 18"/>',
+  eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff:'<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.7A17 17 0 0 0 2 12s3.6 7 10 7a9.700 9.700 0 0 0 4-.9M9.900 9.900a3 3 0 0 0 4.200 4.200"/>',
+  logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  alert:'<path d="M12 3 2 20h20L12 3ZM12 10v4.500M12 17.500h.01"/>',
+  moon:'<path d="M19 15.500A8 8 0 0 1 8.500 5a8 8 0 1 0 10.500 10.500Z"/><path d="M17 3v4m-2-2h4m1 4v2m-1-1h2"/>',
+  pumpkin:'<path d="M12 8c-5 0-9 2.600-9 6.200S7 20.500 12 20.500s9-2.700 9-6.300S17 8 12 8Z"/><path d="M12 8c-2.600 1.400-3.800 3.900-3.800 6.200s1.200 4.700 3.800 6.300M12 8c2.600 1.400 3.800 3.900 3.800 6.200s-1.200 4.700-3.800 6.300"/><path d="M12 8V4.500M12 4.500c1 0 2.100-.6 2.700-1.600"/>',
+  filter:'<path d="M3 5h18l-7 8v6l-4 2v-8L3 5Z"/>',
+  receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3ZM9 8h6M9 12h6"/>'
 };
 const icon=n=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]||ICONS.wrench}</svg>`;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// En móvil las tablas se apilan como tarjetas: cada celda lleva como etiqueta el encabezado de su columna.
+const labelTables=root=>{
+  for(const table of root.querySelectorAll('table')){
+    const heads=[...table.querySelectorAll('thead th')].map(th=>th.textContent.trim());
+    if(!heads.length)continue;
+    for(const row of table.querySelectorAll('tbody tr')){
+      [...row.children].forEach((cell,i)=>{if(i>0&&!cell.dataset.label&&heads[i]&&cell.colSpan===1)cell.dataset.label=heads[i];});
+    }
+  }
+};
 
 
 function inPeriod(date,period,now=new Date()){
@@ -247,10 +265,13 @@ class BennysCloud {
 }
 
 
-const stat=(label,value,note,glyph='chart',accent=false)=>`<article class="stat ${accent?'accent':''}"><div class="stat-top"><span>${label}</span><span class="stat-icon">${icon(glyph)}</span></div><strong>${value}</strong><small>${note}</small></article>`;
+const stat=(label,value,note,glyph='chart',accent=false)=>`<article class="stat ${accent?'accent':''}"><span class="stat-icon">${icon(glyph)}</span><div class="stat-body"><span class="stat-label">${label}</span><strong>${value}</strong><small>${note}</small></div></article>`;
 const person=name=>`<div class="person-cell"><span class="person-initial">${esc(name.slice(0,1).toUpperCase())}</span><strong>${esc(name)}</strong></div>`;
 const empty=(text,glyph='clipboard')=>`<div class="empty-state"><span>${icon(glyph)}</span><h2>${text}</h2><p>Los datos aparecerán al registrar actividad en el taller.</p></div>`;
 const dateLabel=value=>new Intl.DateTimeFormat('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
+const hydrate=root=>root.querySelectorAll('[data-icon]').forEach(el=>{el.innerHTML=icon(el.dataset.icon);});
+const since=value=>{const seconds=Math.round((Date.parse(value)-Date.now())/1000),abs=Math.abs(seconds),rtf=new Intl.RelativeTimeFormat('es',{numeric:'auto'});if(abs<45)return 'justo ahora';if(abs<3600)return rtf.format(Math.round(seconds/60),'minute');if(abs<86400)return rtf.format(Math.round(seconds/3600),'hour');return rtf.format(Math.round(seconds/86400),'day');};
+const initials=name=>String(name||'?').trim().split(/\s+/).slice(0,2).map(p=>p[0]||'').join('').toUpperCase()||'?';
 const ACTIONS={venta_registrada:'Venta registrada',venta_anulada:'Venta anulada',gasto_registrado:'Gasto registrado',gasto_anulado:'Gasto anulado',empleado_actualizado:'Empleado actualizado',cuenta_solicitada:'Solicitud de acceso',tarifa_actualizada:'Tarifa actualizada'};
 
 class ManagementPanel{
@@ -262,12 +283,24 @@ class ManagementPanel{
   render(view){if(view==='dashboard')this.dashboard();if(view==='summary')this.commissions();if(view==='finance')this.finance();if(view==='audit')this.audit();}
   dashboard(){
     const orders=this.period('dashboard-period'),m=salesMetrics(orders),admin=this.cloud?.isAdmin,staff=employeeMetrics(orders,this.cloud?.team);
+    const periodValue=this.el('dashboard-period').value;
     this.el('dashboard-greeting').textContent=`${admin?'Resumen del taller':'Tus ventas y comisiones'} · ${this.getState().settings.mechanic||'Personal'}`;
-    const series=revenueSeries(orders,this.el('dashboard-period').value),max=Math.max(...series.map(p=>p.total),1),width=680,height=205,left=64,bottom=171,plot=width-left-12,step=plot/series.length;
-    const chart=`<svg class="revenue-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Ventas por ${this.el('dashboard-period').value==='today'?'hora':'día'}"><title>Ventas cobradas. ${series.map(p=>`${p.label}: ${euro(p.total)}`).join(', ')}</title>${[0,.5,1].map(n=>`<line class="chart-grid" x1="${left}" x2="${width}" y1="${bottom-n*140}" y2="${bottom-n*140}"/><text class="chart-label" x="0" y="${bottom-n*140+4}">${new Intl.NumberFormat('es',{notation:'compact',maximumFractionDigits:1}).format(max===1?0:max*n)} €</text>`).join('')}${series.map((p,i)=>`<rect class="chart-bar" x="${left+i*step+step*.2}" y="${bottom-p.total/max*140}" width="${step*.6}" height="${p.total/max*140}" rx="2"><title>${esc(p.label)}: ${euro(p.total)}</title></rect>${i%Math.ceil(series.length/8)===0||i===series.length-1?`<text class="chart-label" text-anchor="middle" x="${left+i*step+step/2}" y="194">${esc(p.label)}</text>`:''}`).join('')}</svg>`;
+    const series=revenueSeries(orders,periodValue),max=Math.max(...series.map(p=>p.total),1),width=680,height=205,left=64,bottom=171,plot=width-left-12,step=plot/series.length;
+    const chart=`<svg class="revenue-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Ventas por ${periodValue==='today'?'hora':'día'}"><title>Ventas cobradas. ${series.map(p=>`${p.label}: ${euro(p.total)}`).join(', ')}</title><defs><linearGradient id="bar-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8506f"/><stop offset="1" stop-color="#7b1a3b"/></linearGradient></defs>${[0,.5,1].map(n=>`<line class="chart-grid" x1="${left}" x2="${width}" y1="${bottom-n*140}" y2="${bottom-n*140}"/><text class="chart-label" x="0" y="${bottom-n*140+4}">${euro(max===1?0:Math.round(max*n))}</text>`).join('')}${series.map((p,i)=>`<rect class="chart-bar" x="${left+i*step+step*.2}" y="${bottom-p.total/max*140}" width="${step*.6}" height="${p.total/max*140}" rx="2"><title>${esc(p.label)}: ${euro(p.total)}</title></rect>${i%Math.ceil(series.length/8)===0||i===series.length-1?`<text class="chart-label" text-anchor="middle" x="${left+i*step+step/2}" y="194">${esc(p.label)}</text>`:''}`).join('')}</svg>`;
     const payments=['Efectivo','Transferencia','Tarjeta'].map(name=>({name,total:round(orders.filter(o=>o.status==='active'&&o.payment===name).reduce((n,o)=>n+o.totals.total,0))}));
     const recent=[...orders].sort((a,b)=>Date.parse(b.date)-Date.parse(a.date)).slice(0,6);
-    this.el('dashboard-content').innerHTML=`<div class="kpi-grid">${stat(admin?'Ventas del taller':'Mis ventas',euro(m.total),'Cobros después de descuentos','wallet',true)}${stat('Ventas cobradas',m.count,`Ticket promedio: ${euro(m.average)}`,'clipboard')}${stat('Comisiones generadas',euro(m.commission),'Sobre el margen positivo de cada venta','user')}${stat('Margen del taller',euro(m.net),'Después de piezas y comisiones; antes de gastos','chart')}</div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><div><h2>Evolución de las ventas</h2><p>${this.el('dashboard-period').value==='all'?'Gráfico de los últimos 30 días':'Distribución del período seleccionado'}</p></div><span>EUR</span></div><div class="panel-body">${chart}</div></section><section class="panel"><div class="panel-head"><h2>Métodos de pago</h2><span>${m.count} ${m.count===1?'venta':'ventas'}</span></div><div class="panel-body">${payments.map(p=>`<div class="payment-row"><div><span>${p.name}</span><strong>${euro(p.total)}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${m.total?p.total/m.total*100:0}%"></div></div></div>`).join('')}<p class="panel-note">Solo ventas cobradas. Las anuladas conservan su historial y se excluyen de los totales.</p></div></section></div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><div><h2>Ventas recientes</h2><p>Últimos movimientos del período</p></div><button class="text-button" data-open-view="orders">Ver todas ↗</button></div>${recent.length?`<div class="table-panel" style="border:0;border-radius:0"><table class="compact-table"><thead><tr><th>Venta / Cliente</th><th>Mecánico</th><th>Importe</th><th>Estado</th></tr></thead><tbody>${recent.map(o=>`<tr><td><button class="text-button" data-detail="${esc(o.id)}">${esc(o.folio)}</button><small>${esc(o.client)}</small></td><td>${esc(o.mechanic)}</td><td>${euro(o.totals.total)}</td><td><span class="status-pill ${o.status==='cancelled'?'cancelled':''}">${o.status==='active'?'Cobrado':'Anulado'}</span></td></tr>`).join('')}</tbody></table></div>`:'<div class="chart-empty">Aún no hay ventas en este período.</div>'}</section><section class="panel"><div class="panel-head"><h2>${admin?'Rendimiento del equipo':'Mi rendimiento'}</h2><span>Ventas cobradas</span></div><div class="panel-body">${staff.length?staff.slice(0,5).map(p=>`<div class="summary-row"><div>${person(p.name)}<small class="muted">${p.count} ${p.count===1?'venta':'ventas'}</small></div><strong>${euro(p.total)}</strong></div>`).join(''):'<p class="muted">Registra una venta para comenzar.</p>'}<p class="panel-note">${admin?'Consulta el desglose por empleado en Comisiones.':'Tu administrador gestiona el porcentaje de tu cuenta.'}</p></div></section></div>`;
+    const clients=frequentClients(this.orders).slice(0,4);
+    const activity=admin&&this.cloud.proReady?(this.cloud.audit||[]).slice(0,6):[];
+    const clientsPanel=`<section class="panel"><div class="panel-head"><div><h2>Clientes frecuentes</h2><p>Visitas cobradas</p></div><button class="text-button" data-open-view="clients">Ver clientes <span data-icon="arrow"></span></button></div><div class="panel-body">${clients.length?`<ol class="client-rank">${clients.map(c=>`<li><button class="client-row" data-client="${esc(c.key)}" aria-label="Nueva venta para ${esc(c.name)}"><span class="person-initial">${esc(initials(c.name))}</span><strong>${esc(c.name)}</strong><small>${c.visits} ${c.visits===1?'visita':'visitas'}</small></button></li>`).join('')}</ol>`:'<p class="muted">Los clientes aparecerán al cobrar servicios.</p>'}</div></section>`;
+    const performancePanel=`<section class="panel"><div class="panel-head"><h2>${admin?'Rendimiento del equipo':'Mi rendimiento'}</h2><span>Ventas cobradas</span></div><div class="panel-body">${staff.length?staff.slice(0,5).map(p=>`<div class="summary-row"><div>${person(p.name)}<small class="muted">${p.count} ${p.count===1?'venta':'ventas'}</small></div><strong>${euro(p.total)}</strong></div>`).join(''):'<p class="muted">Registra una venta para comenzar.</p>'}<p class="panel-note">${admin?'Consulta el desglose por empleado en Comisiones.':'Tu administrador gestiona el porcentaje de tu cuenta.'}</p></div></section>`;
+    const activityPanel=`<section class="panel"><div class="panel-head"><h2>Actividad reciente</h2><button class="text-button" data-open-view="audit">Ver actividad <span data-icon="arrow"></span></button></div><div class="panel-body">${activity.length?`<ol class="timeline">${activity.map(row=>{const d=row.details||{},amount=d.amount!=null&&Number.isFinite(Number(d.amount))?(row.action.includes('gasto')?'−':'')+euro(Number(d.amount)):'';return `<li><span class="timeline-dot" aria-hidden="true"></span><div><strong>${esc(ACTIONS[row.action]||row.action)}</strong><small>${esc([d.client,d.label].filter(Boolean).join(' · ')||this.actor(row))}</small></div><span class="timeline-meta"><b>${amount}</b><small>${since(row.created_at)}</small></span></li>`;}).join('')}</ol>`:'<p class="muted">Aún no hay actividad registrada.</p>'}</div></section>`;
+    const paymentsPanel=`<section class="panel"><div class="panel-head"><h2>Métodos de pago</h2><span>${m.count} ${m.count===1?'venta':'ventas'}</span></div><div class="panel-body">${payments.map(p=>`<div class="payment-row"><div><span>${p.name}</span><strong>${euro(p.total)}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${m.total?p.total/m.total*100:0}%"></div></div></div>`).join('')}<p class="panel-note">Solo ventas cobradas. Las anuladas conservan su historial y se excluyen de los totales.</p></div></section>`;
+    this.el('dashboard-content').innerHTML=`<div class="kpi-grid">${stat(admin?'Ventas del taller':'Mis ventas',euro(m.total),'Cobros después de descuentos','wallet',true)}${stat('Ventas cobradas',m.count,`Ticket promedio: ${euro(m.average)}`,'clipboard')}${stat('Comisiones generadas',euro(m.commission),'Sobre el margen positivo de cada venta','user')}${stat('Margen del taller',euro(m.net),'Después de piezas y comisiones; antes de gastos','chart')}</div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><div><h2>Evolución de las ventas</h2><p>${periodValue==='all'?'Gráfico de los últimos 30 días':'Distribución del período seleccionado'}</p></div><span>EUR</span></div><div class="panel-body">${chart}</div></section>${clientsPanel}</div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><div><h2>Ventas recientes</h2><p>Últimos movimientos del período</p></div><button class="text-button" data-open-view="orders">Ver todas <span data-icon="arrow"></span></button></div>${recent.length?`<div class="table-flush"><table class="compact-table"><thead><tr><th>Venta / Cliente</th><th>Mecánico</th><th class="num">Importe</th><th>Estado</th></tr></thead><tbody>${recent.map(o=>`<tr><td><button class="text-button" data-detail="${esc(o.id)}">${esc(o.folio)}</button><small>${esc(o.client)}</small></td><td>${esc(o.mechanic)}</td><td class="num">${euro(o.totals.total)}</td><td><span class="status-pill ${o.status==='cancelled'?'cancelled':''}">${o.status==='active'?'Cobrado':'Anulado'}</span></td></tr>`).join('')}</tbody></table></div>`:'<div class="chart-empty">Aún no hay ventas en este período.</div>'}</section>${admin?activityPanel:performancePanel}</div><div class="dashboard-grid${admin?'':' single'}">${paymentsPanel}${admin?performancePanel:''}</div>`;
+    hydrate(this.el('dashboard-content'));
+    // Las cifras que cambian por una sincronización o una venta nueva se resaltan un instante; el resto permanece quieto.
+    const values=[...this.el('dashboard-content').querySelectorAll('.stat strong')],texts=values.map(n=>n.textContent),previous=this.lastKpi;
+    if(previous&&previous.period===periodValue&&previous.user===this.cloud?.user?.id)values.forEach((n,i)=>{if(previous.texts[i]!==texts[i])n.classList.add('value-changed');});
+    this.lastKpi={texts,period:periodValue,user:this.cloud?.user?.id};
   }
   commissions(){
     const orders=this.period('summary-period'),m=salesMetrics(orders),staff=employeeMetrics(orders,this.cloud?.team);
@@ -299,7 +332,8 @@ class ManagementPanel{
   auditDetail(row){const d=row.details||{};return [d.label,d.client,Number.isFinite(Number(d.amount))&&d.amount!=null?euro(Number(d.amount)):null,d.reason?`Motivo: ${d.reason}`:null,d.oldPrice!=null?`Precio: ${euro(Number(d.oldPrice))} → ${euro(Number(d.price))} · Costo: ${euro(Number(d.oldCost))} → ${euro(Number(d.cost))}`:null,d.role?`Rol: ${d.role==='admin'?'Administrador':'Mecánico'} · ${d.active?'Activo':'Inactivo'} · Comisión: ${Number(d.commission)}%`:null].filter(Boolean).join(' · ')||'Cambio registrado';}
 }
 
-// El ambiente se puede pausar sin afectar la sincronización ni las ventas.
+// El ambiente (niebla, brasas, murciélagos y el emblema 3D) se puede pausar sin afectar la sincronización ni las ventas.
+// La preferencia se guarda en este navegador; prefers-reduced-motion también lo detiene.
 function initAtmosphere(){
   const preference=window.matchMedia('(prefers-reduced-motion: reduce)');
   const buttons=[...document.querySelectorAll('[data-ambient-toggle]')];
@@ -316,6 +350,8 @@ function initAtmosphere(){
       const text=button.querySelector('[data-ambient-label]');
       if(text)text.textContent=preference.matches?'Movimiento reducido':stopped?'Activar ambiente':'Pausar ambiente';
     }
+    // Avisa al emblema 3D (carga diferida) y a cualquier otro efecto.
+    document.dispatchEvent(new CustomEvent('bennys:ambient',{detail:{paused:stopped}}));
   };
   for(const button of buttons)button.addEventListener('click',()=>{
     paused=!paused;
@@ -326,9 +362,73 @@ function initAtmosphere(){
   render();
 }
 
+// Emblema 3D del acceso. Es siempre opcional: la imagen estática (renderizada desde el mismo modelo) es la
+// versión base, y el acceso y el registro de ventas funcionan igual si WebGL no existe, el ambiente está
+// pausado, la carga falla o el equipo es lento. Parámetros de depuración: ?logo=static (solo imagen) y
+// ?logo=3d (permite render por software, útil en pruebas).
+const MODULE_URL='./assets/logo3d/logo3d.js';
+const MODE=new URLSearchParams(location.search).get('logo');
+let controller=null,loading=null,wanted=false,calm=false;
+const host=()=>document.getElementById('logo-stage');
+const effectsOn=()=>!document.body.classList.contains('effects-paused');
+
+function webglAvailable(){
+  try{
+    const canvas=document.createElement('canvas'),options={failIfMajorPerformanceCaveat:MODE!=='3d'};
+    const gl=canvas.getContext('webgl2',options)||canvas.getContext('webgl',options);
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    return Boolean(gl);
+  }catch{return false;}
+}
+
+function release(){
+  if(!controller)return;
+  controller.dispose();controller=null;
+  host()?.classList.remove('is-live');
+}
+
+async function mount(){
+  if(controller||loading||MODE==='static'||!effectsOn()||!webglAvailable())return;
+  const stage=host();if(!stage)return;
+  loading=(async()=>{
+    try{
+      const module=await import(MODULE_URL);
+      // Mientras se descargaba, el usuario pudo entrar, pausar el ambiente o cambiar de vista.
+      if(!wanted||!effectsOn()||!host())return;
+      const next=await module.mountLogo(stage,{
+        allowSoftware:MODE==='3d',
+        shouldAnimate:effectsOn,
+        onFallback:()=>release()
+      });
+      if(!next)return;
+      if(!wanted){next.dispose();return;}
+      controller=next;controller.setCalm(calm);
+      // Dos cuadros bastan para que el lienzo ya tenga el emblema pintado antes del fundido.
+      requestAnimationFrame(()=>requestAnimationFrame(()=>stage.classList.add('is-live')));
+    }catch{/* se conserva la imagen estática */}
+    finally{loading=null;}
+  })();
+}
+
+function sync(){
+  if(wanted)mount();else release();
+}
+
+function initBrand(){
+  document.addEventListener('bennys:ambient',sync);
+}
+/** El acceso es visible: monta el emblema 3D. Al entrar al panel se libera el contexto WebGL. */
+function setAccessVisible(visible){
+  wanted=Boolean(visible);sync();
+}
+/** Mientras se escribe en el formulario, el balanceo del emblema casi se detiene. */
+function setAccessCalm(value){
+  calm=Boolean(value);controller?.setCalm(calm);
+}
+
 
 const $=id=>document.getElementById(id);
-initAtmosphere();
+initAtmosphere();initBrand();
 const GUEST_KEY='bennys-motors-v1';
 const defaultState=()=>({version:1,catalog:CATALOG.map(i=>({...i})),orders:[],next:1,settings:{mechanic:'',commission:0},draft:{items:[],client:'',discount:0,commission:0}});
 const percent=n=>Number.isFinite(n)&&n>=0&&n<=100;
@@ -396,10 +496,13 @@ function selectClient(key){
 function add(id){const service=state.catalog.find(i=>i.id===id);if(!service)return;const old=state.draft.items.find(i=>i.id===id),result=addToOrder(state.draft.items,service);state.draft.items=result.items;persist();refresh();if(result.replaced.length)toast(`${service.name} reemplazó ${result.replaced.map(i=>i.name).join(', ')}.`);else if(service.exclusive&&old)toast('Esta configuración ya está en la orden.');}
 function setView(view){
   if(['team','finance','audit'].includes(view)&&!cloud?.isAdmin)view='dashboard';
-  currentView=view;document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id==='view-'+view));document.querySelectorAll('[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===view));
+  currentView=view;document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id==='view-'+view));document.querySelectorAll('[data-view]').forEach(el=>{const on=el.dataset.view===view;el.classList.toggle('active',on);if(on)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});enterView(view);
   $('breadcrumb-current').textContent=({dashboard:'Inicio',calculator:'Nueva venta',orders:cloud?.isAdmin?'Ventas del taller':'Mis ventas',catalog:'Tarifario',clients:'Clientes frecuentes',summary:'Comisiones',finance:'Gastos y resultado',team:'Equipo',audit:'Actividad'})[view];$('mobile-total').classList.toggle('no-mobile-total',view!=='calculator');
   if(view==='clients')renderClients();if(view==='orders')renderOrders();if(view==='catalog')renderPrices();if(view==='team')renderTeam();management?.render(view);history.replaceState(null,'','#'+view);closeMenu();window.scrollTo({top:0,behavior:'instant'});
 }
+// Entrada breve: solo mientras se abre la vista. Las actualizaciones posteriores de datos no vuelven a animar el contenido.
+let enterTimer;
+function enterView(view){const section=document.getElementById('view-'+view);if(!section)return;section.classList.remove('view-entering');void section.offsetWidth;section.classList.add('view-entering');clearTimeout(enterTimer);enterTimer=setTimeout(()=>section.classList.remove('view-entering'),900);}
 function closeMenu(){document.body.classList.remove('menu-open');$('menu-toggle').setAttribute('aria-expanded','false');}
 function modal(title,body,footer=''){if($('modal').open)$('modal').close();$('modal-content').innerHTML=`<div class="modal-head"><h2>${title}</h2><button class="icon-button" data-close aria-label="Cerrar">${icon('close')}</button></div><div class="modal-body">${body}</div>${footer?`<div class="modal-footer">${footer}</div>`:''}`;$('modal').showModal();}
 function confirmAction(title,description,action,label='Continuar'){
@@ -429,7 +532,8 @@ function openCheckout(){
 function periodMatches(order,period){return inPeriod(order.date,period);}
 function filteredOrders(){const query=clientKey($('order-search').value),status=$('order-status-filter').value,payment=$('order-payment').value,employee=$('order-employee').value;return state.orders.filter(o=>periodMatches(o,$('order-period').value)&&clientKey([o.folio,o.client,o.mechanic].join(' ')).includes(query)&&(status==='all'||o.status===status)&&(payment==='all'||o.payment===payment)&&(!cloud?.isAdmin||employee==='all'||o.employeeId===employee));}
 function shortDate(date){return new Intl.DateTimeFormat('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(date));}
-function renderOrders(){
+function updateFilterCount(){const active=['order-period','order-status-filter','order-payment','order-employee'].filter(id=>$(id).value!=='all'&&!$(id).closest('label')?.hidden).length;$('filters-count').textContent=active;$('filters-count').hidden=!active;}
+function renderOrders(){updateFilterCount();
   const previous=$('order-employee').value;$('order-employee-label').hidden=!cloud?.isAdmin;$('order-employee').innerHTML='<option value="all">Todo el equipo</option>'+(cloud?.team||[]).map(p=>`<option value="${esc(p.id)}">${esc(p.display_name)}</option>`).join('');if([...$('order-employee').options].some(o=>o.value===previous))$('order-employee').value=previous;const orders=filteredOrders(),m=salesMetrics(orders);$('export-orders').disabled=!orders.length;$('orders-description').textContent=cloud?.isAdmin?'Consulta y exporta las ventas de todo el equipo.':'Consulta y exporta tus ventas registradas.';$('orders-totals').innerHTML=`<span>Resultados <strong>${orders.length}</strong></span><span>Ventas cobradas <strong>${m.count}</strong></span><span>Importe cobrado <strong>${euro(m.total)}</strong></span><span>Comisiones <strong>${euro(m.commission)}</strong></span>`;
   $('orders-list').innerHTML=orders.length?`<div class="table-panel"><table><thead><tr><th>Folio / Fecha</th><th>Cliente</th><th>Mecánico</th><th>Pago</th><th>Total</th><th>Ganancia</th><th>Estado</th><th></th></tr></thead><tbody>${orders.map(o=>`<tr><td><strong>${esc(o.folio)}</strong><small>${shortDate(o.date)}</small></td><td>${esc(o.client)}</td><td>${esc(o.mechanic||'Sin indicar')}</td><td>${esc(o.payment||'—')}</td><td>${euro(o.totals.total)}</td><td class="margin-price">${euro(o.totals.net)}</td><td><span class="status-pill ${o.status==='cancelled'?'cancelled':''}">${o.status==='active'?'Cobrado':'Anulado'}</span></td><td><button class="row-button" data-detail="${esc(o.id)}">Ver venta ↗</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state"><span>${icon('clipboard')}</span><h2>${state.orders.length?'Sin resultados para este filtro.':'Aún no hay ventas registradas.'}</h2><p>${state.orders.length?'Prueba otro nombre o período.':cloud?.isActive?'Registra tu primer servicio desde la calculadora.':'Accede con tu cuenta para consultar tus órdenes del taller.'}</p><button class="button primary" ${cloud?.isActive?'data-go-calculator':'data-open-account'}>${cloud?.isActive?'Abrir calculadora':'Acceder al taller'} ↗</button></div>`;
 }
@@ -466,23 +570,32 @@ function openSettings(){
   $('backup-file').onchange=async e=>{const file=e.target.files?.[0];if(!file||cloud?.user)return;try{if(file.size>10000000)throw Error();const parsed=JSON.parse(await file.text());if(!validState(parsed))throw Error();confirmAction('Importar respaldo local',`Este respaldo contiene <strong>${parsed.orders.length} órdenes locales</strong>. Reemplazará el guardado local de este navegador.`,()=>{const old=state;state=sanitizeState(parsed);if(!persist()){state=old;throw Error('No se pudo guardar el respaldo.');}renderDraftFields();refresh();setView(currentView);toast('Respaldo local importado.');},'Importar y reemplazar');}catch{toast('El archivo no es un respaldo válido de Benny’s.');}};
 }
 function showHelp(){modal('Cómo trabajar en el taller',`<ol class="help-list"><li>En Nueva venta, escribe el nombre del cliente y selecciona los servicios.</li><li>Revisa descuentos, piezas y comisión. Verifica el pago en el juego antes de confirmar.</li><li>Consulta Ventas para filtrar, exportar o anular una venta con su motivo.</li><li>En Clientes frecuentes puedes reutilizar nombres y revisar su historial.</li><li>Comisiones muestra lo generado. Administración también controla equipo, tarifas, gastos y actividad.</li></ol><p class="modal-hint">Cada mecánico consulta sus propias ventas. Administración ve el taller completo. Pulsa / para buscar servicios.</p>`,`<button class="button secondary" data-close>Cerrar</button>`);}
+function accessHeading(title,lead){$('access-title').textContent=title;$('access-lead').textContent=lead;}
+function authMessage(text,kind='error'){
+  const box=$('auth-message');if(!box)return;
+  box.className='form-message'+(text?' '+kind:'');
+  box.innerHTML=text?`<span class="message-icon">${icon(kind==='error'?'alert':kind==='ok'?'check':'refresh')}</span><span>${esc(text)}</span>`:'';
+}
+function setAuthBusy(busy){const button=document.querySelector('[form="auth-form"]'),form=$('auth-form');if(button){button.disabled=busy;button.setAttribute('aria-busy',String(busy));}form?.classList.toggle('is-busy',busy);}
 function renderAccess(){
   const waiting=(!cloud?.initialized&&!connectionFailed)||(cloud?.loading&&!cloud?.ready&&!cloud?.error);
   const phase=waiting?'loading':cloud?.isActive?'active':cloud?.user?(cloud.error?'error':'pending'):'login';
   document.body.classList.toggle('booting',phase==='loading');document.body.classList.toggle('locked',phase!=='active');
   $('loading-title').textContent=cloud?.user?'Cargando el taller':'Abriendo el taller';$('loading-message').textContent=cloud?.user?'Consultando tu perfil y los registros de trabajo…':'Comprobando tu sesión…';
+  setAccessVisible(phase!=='active'&&phase!=='loading');
   if(phase===gatePhase)return;gatePhase=phase;
   if(phase==='loading')return;
   if(phase==='active'){$('access-content').innerHTML='';if($('modal').open&&($('pending-account')||$('claim-form')))$('modal').close();return;}
   closeMenu();if(phase==='login'){if($('modal').open)$('modal').close();openAuth();return;}
-  $('access-content').innerHTML=`<div class="gate-status"><span>${icon(phase==='error'?'refresh':'shield')}</span><h3>${phase==='error'?'No pudimos cargar el taller':phase==='loading'?'Comprobando acceso…':'Tu cuenta necesita activación'}</h3><p>${phase==='error'?esc(errorText(cloud.error)):phase==='loading'?'Estamos consultando tu perfil de trabajo.':'El administrador debe activar tu cuenta. Si instalaste el taller, utiliza el código inicial de administración.'}</p><button id="gate-account" class="button primary">${phase==='error'?'Volver a comprobar':'Revisar mi acceso'}</button><button id="gate-signout" class="text-button">Cerrar sesión</button></div>`;
+  accessHeading(phase==='error'?'No pudimos cargar el taller':'Tu cuenta necesita activación',phase==='error'?'La conexión con el taller falló.':'Un administrador debe activar tu acceso.');
+  $('access-content').innerHTML=`<div class="gate-status"><span class="gate-icon">${icon(phase==='error'?'refresh':'shield')}</span><p>${phase==='error'?esc(errorText(cloud.error)):'El administrador debe activar tu cuenta. Si instalaste el taller, utiliza el código inicial de administración.'}</p><button id="gate-account" class="button primary">${phase==='error'?'Volver a comprobar':'Revisar mi acceso'}</button><button id="gate-signout" class="text-button">Cerrar sesión</button></div>`;
   $('gate-account').onclick=async()=>{if(phase==='error'){await cloud.load();}else openAccount();};$('gate-signout').onclick=async()=>{try{await cloud.signOut();}catch(error){toast(errorText(error));}};
 }
 function renderCloudStatus(){
   const status=cloud?.loading?'Sincronizando…':cloud?.error?'Conexión pendiente':cloud?.isActive?'Sincronizado con el taller':cloud?.user?'Cuenta pendiente de activación':'Acceso del personal';
   $('cloud-status-text').textContent=status;$('cloud-indicator').classList.toggle('offline',!cloud?.isActive);
   $('account-label').textContent=cloud?.user?(cloud.profile?.display_name||'Mi cuenta'):'Acceder';
-  for(const id of ['team-nav','finance-nav','audit-nav'])$(id).hidden=!cloud?.isAdmin;$('sync-button').hidden=!cloud?.user;
+  for(const id of ['team-nav','finance-nav','audit-nav','admin-nav-label'])$(id).hidden=!cloud?.isAdmin;$('sync-button').hidden=!cloud?.user;$('signout-button').hidden=!cloud?.user;
   $('account-role').textContent=cloud?.isActive?(cloud.isAdmin?'Administrador':'Mecánico'):'Perfil del mecánico';
   $('ticket-storage-text').textContent='Ventas en Supabase · Borrador local';$('sync-button').classList.toggle('syncing',Boolean(cloud?.loading));$('sync-button').setAttribute('aria-busy',String(Boolean(cloud?.loading)));$('home-workspace').textContent=cloud?.isAdmin?'Taller · Administración':'Mi actividad · Mecánico';$('last-sync').textContent=cloud?.lastSynced?'Actualizado a las '+cloud.lastSynced.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}):'Sincronizando registros…';renderAccess();
 }
@@ -503,17 +616,26 @@ function cloudChanged(event){
     if(accountUser){state.orders=[];state.settings={mechanic:cloud.profile?.display_name||'',commission:0};persist();refresh();if(currentView==='orders')renderOrders();if(currentView==='summary')renderSummary();if(currentView==='catalog')renderPrices();if(['team','finance','audit'].includes(currentView))setView('dashboard');}
     if(!cloud.error&&!$('modal').open&&pendingPresentedUser!==cloud.user.id){pendingPresentedUser=cloud.user.id;openAccount();}
   }else if(event.kind==='error'){
-    if($('auth-form')){$('auth-message').textContent=errorText(event.error);document.querySelector('[form="auth-form"]').disabled=false;}
+    if($('auth-form')){authMessage(errorText(event.error),'error');setAuthBusy(false);}
     if(currentView==='catalog')renderPrices();if(['team','finance','audit'].includes(currentView))setView('dashboard');
   }
   renderCloudStatus();
 }
-function openAuth(mode='login'){
+function openAuth(mode='login',{animate=false,focus=''}={}){
   const signup=mode==='signup';
   document.body.classList.add('locked');
-  $('access-content').innerHTML=`<div class="auth-tabs"><button id="auth-login-tab" class="${signup?'':'active'}">Iniciar sesión</button><button id="auth-signup-tab" class="${signup?'active':''}">Solicitar acceso</button></div><form id="auth-form">${signup?'<label>Nombre del mecánico<input name="name" maxlength="80" autocomplete="name" required placeholder="Tu nombre en el taller"></label>':''}<label>Nombre de usuario<input name="username" type="text" minlength="3" maxlength="24" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,23}" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="Ej. mateo"></label><label>Contraseña<input name="password" type="password" minlength="8" maxlength="128" autocomplete="${signup?'new-password':'current-password'}" required placeholder="Al menos 8 caracteres"></label><div class="form-message" id="auth-message" role="alert"></div></form><button class="button primary access-submit" form="auth-form" type="submit">${signup?'Solicitar acceso':'Entrar al taller'} ${icon('chevron')}</button><p class="modal-hint">${signup?'Elige tu usuario y contraseña. Administración revisará tu solicitud.':'Acceso exclusivo para el personal autorizado de Benny’s Motors.'}</p>`;
-  $('auth-login-tab').onclick=()=>openAuth('login');$('auth-signup-tab').onclick=()=>openAuth('signup');
-  $('auth-form').onsubmit=async e=>{e.preventDefault();const form=e.currentTarget,button=document.querySelector('[form="auth-form"]');if(button.disabled)return;button.disabled=true;const data=new FormData(form);$('auth-message').textContent=signup?'Creando tu cuenta…':'Comprobando acceso…';try{if(!cloud)throw Error('La conexión no está disponible. Vuelve a cargar la página.');if(signup){const result=await cloud.signUp(String(data.get('name')).trim(),String(data.get('username')).trim().toLowerCase(),String(data.get('password')));if(!result.session&&form.isConnected){$('auth-message').textContent='Solicitud enviada. Ya puedes iniciar sesión; administración debe aprobar tu acceso al taller.';form.querySelector('[name="password"]').value='';button.disabled=false;return;}}else await cloud.signIn(String(data.get('username')).trim().toLowerCase(),String(data.get('password')));if(form.isConnected){$('auth-message').textContent='Cargando tu taller…';setTimeout(()=>{if(form.isConnected&&cloud?.error){$('auth-message').textContent=errorText(cloud.error);button.disabled=false;}},1500);}}catch(error){if(form.isConnected){$('auth-message').textContent=errorText(error);button.disabled=false;}}};
+  const keep=$('auth-form')?.elements?.username?.value||'';
+  accessHeading(signup?'Solicita tu acceso':'Inicia tu turno',signup?'El administrador revisará tu solicitud.':'Ingresa con tu usuario del taller.');
+  const field=(id,label,glyph,input)=>`<div class="field-group"><label for="${id}">${label}</label><div class="field"><span class="field-icon" aria-hidden="true">${icon(glyph)}</span>${input}</div></div>`;
+  $('access-content').innerHTML=`<div class="auth-tabs" role="tablist" aria-label="Tipo de acceso"><button type="button" id="auth-login-tab" role="tab" aria-selected="${!signup}" aria-controls="auth-form" tabindex="${signup?-1:0}" class="${signup?'':'active'}">Iniciar sesión</button><button type="button" id="auth-signup-tab" role="tab" aria-selected="${signup}" aria-controls="auth-form" tabindex="${signup?0:-1}" class="${signup?'active':''}">Solicitar acceso</button></div><form id="auth-form" role="tabpanel" aria-labelledby="auth-${signup?'signup':'login'}-tab">${signup?field('auth-name','NOMBRE DEL MECÁNICO','team','<input id="auth-name" name="name" maxlength="80" autocomplete="name" required placeholder="Tu nombre en el taller">'):''}${field('auth-username','USUARIO','user',`<input id="auth-username" name="username" type="text" minlength="3" maxlength="24" pattern="[a-zA-Z0-9][a-zA-Z0-9._\\-]{2,23}" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="${signup?'Ej. mateo':'Tu nombre de usuario'}">`)}${field('auth-password','CONTRASEÑA','lock',`<input id="auth-password" name="password" type="password" minlength="8" maxlength="128" autocomplete="${signup?'new-password':'current-password'}" required placeholder="${signup?'Al menos 8 caracteres':'Tu contraseña'}"><button type="button" class="reveal" id="auth-reveal" aria-label="Mostrar contraseña" aria-pressed="false">${icon('eye')}</button>`)}<div class="form-message" id="auth-message" role="alert"></div><button class="button primary access-submit" form="auth-form" type="submit"><span>${signup?'Solicitar acceso':'Entrar al taller'}</span>${icon('arrow')}</button></form>`;
+  if(keep)$('auth-username').value=keep;
+  const content=$('access-content');
+  if(animate&&!matchMedia('(prefers-reduced-motion: reduce)').matches&&!document.body.classList.contains('effects-paused'))content.animate([{opacity:0,transform:'translateY(6px)'},{opacity:1,transform:'none'}],{duration:220,easing:'cubic-bezier(.2,.7,.2,1)'});
+  if(focus==='tab')$('auth-'+mode+'-tab').focus();
+  $('auth-login-tab').onclick=()=>openAuth('login',{animate:true,focus:'tab'});$('auth-signup-tab').onclick=()=>openAuth('signup',{animate:true,focus:'tab'});
+  for(const tab of document.querySelectorAll('.auth-tabs [role=tab]'))tab.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const next=e.key==='Home'?'login':e.key==='End'?'signup':signup?'login':'signup';openAuth(next,{animate:true,focus:'tab'});};
+  $('auth-reveal').onclick=()=>{const input=$('auth-password'),showing=input.type==='password';input.type=showing?'text':'password';$('auth-reveal').setAttribute('aria-pressed',String(showing));$('auth-reveal').setAttribute('aria-label',showing?'Ocultar contraseña':'Mostrar contraseña');$('auth-reveal').innerHTML=icon(showing?'eyeoff':'eye');};
+  $('auth-form').onsubmit=async e=>{e.preventDefault();const form=e.currentTarget,button=document.querySelector('[form="auth-form"]');if(button.disabled)return;setAuthBusy(true);const data=new FormData(form);authMessage(signup?'Creando tu cuenta…':'Comprobando acceso…','busy');try{if(!cloud)throw Error('La conexión no está disponible. Vuelve a cargar la página.');if(signup){const result=await cloud.signUp(String(data.get('name')).trim(),String(data.get('username')).trim().toLowerCase(),String(data.get('password')));if(!result.session&&form.isConnected){authMessage('Solicitud enviada. Ya puedes iniciar sesión; administración debe aprobar tu acceso al taller.','ok');form.querySelector('[name="password"]').value='';setAuthBusy(false);return;}}else await cloud.signIn(String(data.get('username')).trim().toLowerCase(),String(data.get('password')));if(form.isConnected){authMessage('Cargando tu taller…','busy');setTimeout(()=>{if(form.isConnected&&cloud?.error){authMessage(errorText(cloud.error),'error');setAuthBusy(false);}},1500);}}catch(error){if(form.isConnected){authMessage(errorText(error),'error');setAuthBusy(false);}}};
 }
 function openAccount(){
   if(!cloud?.user){openAuth();return;}
@@ -532,7 +654,7 @@ function renderTeam(){
 }
 function createMechanic(){
   if(!cloud?.isAdmin)return;
-  modal('Crear mecánico',`<form id="create-employee-form"><label>Nombre del mecánico<input name="name" maxlength="80" autocomplete="off" required placeholder="Nombre dentro del taller"></label><label>Nombre de usuario<input name="username" minlength="3" maxlength="24" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,23}" autocomplete="off" autocapitalize="none" spellcheck="false" required placeholder="Ej. alex.motors"></label><div class="form-grid"><label>Contraseña inicial<input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label><label>Comisión (%)<input name="commission" type="number" min="0" max="100" step="0.01" value="0" required></label></div><p class="modal-hint">Se creará una cuenta de mecánico activa. Entrará con este usuario y contraseña.</p><div id="create-employee-message" class="form-message" role="alert"></div></form>`,`<button class="button secondary" data-close>Cancelar</button><button class="button primary" type="submit" form="create-employee-form">Crear mecánico</button>`);
+  modal('Crear mecánico',`<form id="create-employee-form"><label>Nombre del mecánico<input name="name" maxlength="80" autocomplete="off" required placeholder="Nombre dentro del taller"></label><label>Nombre de usuario<input name="username" minlength="3" maxlength="24" pattern="[a-zA-Z0-9][a-zA-Z0-9._\\-]{2,23}" autocomplete="off" autocapitalize="none" spellcheck="false" required placeholder="Ej. alex.motors"></label><div class="form-grid"><label>Contraseña inicial<input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label><label>Comisión (%)<input name="commission" type="number" min="0" max="100" step="0.01" value="0" required></label></div><p class="modal-hint">Se creará una cuenta de mecánico activa. Entrará con este usuario y contraseña.</p><div id="create-employee-message" class="form-message" role="alert"></div></form>`,`<button class="button secondary" data-close>Cancelar</button><button class="button primary" type="submit" form="create-employee-form">Crear mecánico</button>`);
   $('create-employee-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,button=document.querySelector('[form="create-employee-form"]'),values=new FormData(form);if(button.disabled)return;button.disabled=true;try{await cloud.createEmployee({name:String(values.get('name')).trim(),username:String(values.get('username')).trim().toLowerCase(),password:String(values.get('password')),commission:Number(values.get('commission'))});await cloud.load();if(form.isConnected)$('modal').close();toast('Mecánico creado y activado.');}catch(error){if(form.isConnected){$('create-employee-message').textContent=errorText(error);button.disabled=false;}}};
 }
 function editEmployee(id){
@@ -542,12 +664,13 @@ function editEmployee(id){
 }
 
 management=new ManagementPanel({getState:()=>state,getCloud:()=>cloud,modal,toast,errorText,confirmAction,exportRows:(name,rows)=>{download(name,'\uFEFF'+rows.map(row=>row.map(csvCell).join(';')).join('\r\n'),'text/csv;charset=utf-8');toast('Informe exportado.');}});
+for(const id of ['orders-list','price-table','summary-content','finance-content','team-list','clients-list']){const target=$(id);if(target)new MutationObserver(()=>labelTables(target)).observe(target,{childList:true});}
 hydrateIcons();$('top-date').textContent=new Intl.DateTimeFormat('es-MX',{day:'numeric',month:'long',year:'numeric'}).format(new Date());
 $('categories').innerHTML=CATEGORIES.map(c=>`<button class="category-button ${c.id==='all'?'active':''}" data-category="${c.id}" aria-pressed="${c.id==='all'}">${icon(c.icon)}${esc(c.label)}</button>`).join('');
 renderDraftFields();refresh();
 document.querySelectorAll('[data-view]').forEach(button=>button.onclick=()=>setView(button.dataset.view));
 $('services-grid').onclick=e=>{const button=e.target.closest('[data-add]');if(button)add(button.dataset.add);};
-$('categories').onclick=e=>{const button=e.target.closest('[data-category]');if(!button)return;category=button.dataset.category;document.querySelectorAll('[data-category]').forEach(c=>{c.classList.toggle('active',c===button);c.setAttribute('aria-pressed',String(c===button));});renderServices();};
+$('categories').onclick=e=>{const button=e.target.closest('[data-category]');if(!button)return;category=button.dataset.category;document.querySelectorAll('[data-category]').forEach(c=>{c.classList.toggle('active',c===button);c.setAttribute('aria-pressed',String(c===button));});renderServices();$('services-grid').classList.remove('stagger');void $('services-grid').offsetWidth;$('services-grid').classList.add('stagger');};
 $('service-search').oninput=renderServices;
 for(const [id,key] of Object.entries({'client':'client'}))$(id).oninput=e=>{state.draft[key]=e.target.value;persist();renderClientPicker();};
 for(const key of ['discount','commission']){$(key).oninput=e=>{if(key==='commission'&&cloud?.user&&!cloud.isAdmin){e.target.value=state.draft.commission;return;}const value=Number(e.target.value);state.draft[key]=Math.max(0,Math.min(100,Number.isFinite(value)?value:0));persist();renderOrder();};$(key).onblur=()=>$(key).value=state.draft[key];}
@@ -556,18 +679,22 @@ $('order-items').onchange=e=>{const input=e.target.closest('[data-quantity]');if
 $('new-order').onclick=()=>{if(state.draft.items.length||state.draft.client)confirmAction('Empezar una nueva orden','Se vaciará la cotización actual. Las órdenes registradas seguirán en el historial.',clearDraft,'Nueva orden');else{clearDraft();$('client').focus();}};
 $('copy-ticket').onclick=()=>copyText(receipt(snapshot()));$('checkout').onclick=openCheckout;
 $('presets-button').onclick=()=>{modal('Selecciones de servicios',`<p>Agrega una selección de servicios con las tarifas actuales. Puedes personalizarla después.</p>${PRESETS.map(p=>`<button class="preset" data-preset="${p.id}"><span>${icon(p.icon)}</span><span><strong>${esc(p.name)}</strong><small>${esc(p.detail)}</small></span><b>${euro(p.items.reduce((n,id)=>n+state.catalog.find(i=>i.id===id).price,0))}</b></button>`).join('')}<p class="modal-hint">Las selecciones suman los precios individuales, sin descuentos de paquete.</p>`);document.querySelectorAll('[data-preset]').forEach(button=>button.onclick=()=>{const preset=PRESETS.find(p=>p.id===button.dataset.preset);for(const id of preset.items)state.draft.items=addToOrder(state.draft.items,state.catalog.find(i=>i.id===id)).items;persist();refresh();$('modal').close();toast('Selección agregada a la orden.');});};
+$('signout-button').onclick=async()=>{try{await cloud.signOut();toast('Sesión cerrada.');}catch(error){toast(errorText(error));}};
+$('access-screen').addEventListener('focusin',e=>{if(e.target.closest('#auth-form'))setAccessCalm(true);});
+$('access-screen').addEventListener('focusout',e=>{if(!e.relatedTarget?.closest?.('#auth-form'))setAccessCalm(false);});
 $('settings-button').onclick=openSettings;$('profile-button').onclick=openAccount;$('top-settings').onclick=openSettings;$('help-button').onclick=showHelp;$('account-button').onclick=openAccount;
 $('sync-button').onclick=async()=>{if(cloud){await cloud.load();toast(cloud.error?errorText(cloud.error):'Datos del taller actualizados.');}};
 $('team-refresh').onclick=()=>cloud?.load();$('create-mechanic').onclick=createMechanic;
 $('modal').onclick=e=>{if(e.target.closest('[data-close]'))$('modal').close();else if(e.target===$('modal')){const rect=$('modal').getBoundingClientRect();if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)$('modal').close();}};
 document.addEventListener('click',e=>{const detail=e.target.closest('[data-detail]'),employee=e.target.closest('[data-employee]');if(detail)openDetail(detail.dataset.detail);if(employee)editEmployee(employee.dataset.employee);const client=e.target.closest('[data-client]');if(client)selectClient(client.dataset.client);if(e.target.closest('[data-go-calculator]'))setView('calculator');if(e.target.closest('[data-open-account]'))openAccount();const view=e.target.closest('[data-open-view]');if(view)setView(view.dataset.openView);const expense=e.target.closest('[data-cancel-expense]');if(expense)management.cancelExpense(expense.dataset.cancelExpense);const clientHistory=e.target.closest('[data-client-history]');if(clientHistory)openClientHistory(clientHistory.dataset.clientHistory);});
 $('client-search').oninput=renderClients;$('show-clients').onclick=()=>setView('clients');
-$('order-search').oninput=renderOrders;for(const id of ['order-period','order-status-filter','order-payment','order-employee'])$(id).onchange=renderOrders;$('summary-period').onchange=renderSummary;$('dashboard-period').onchange=()=>management.dashboard();$('finance-period').onchange=()=>management.finance();$('audit-period').onchange=()=>management.audit();$('audit-search').oninput=()=>management.audit();$('new-expense').onclick=()=>management.newExpense();$('export-commissions').onclick=()=>management.exportCommissions();$('menu-toggle').onclick=()=>{const open=document.body.classList.toggle('menu-open');$('menu-toggle').setAttribute('aria-expanded',String(open));};$('nav-backdrop').onclick=closeMenu;$('export-orders').onclick=exportCsv;
+$('filters-toggle').onclick=()=>{const open=$('orders-filters').classList.toggle('filters-open');$('filters-toggle').setAttribute('aria-expanded',String(open));};
+$('order-search').oninput=renderOrders;for(const id of ['order-period','order-status-filter','order-payment','order-employee'])$(id).onchange=renderOrders;$('summary-period').onchange=renderSummary;$('dashboard-period').onchange=()=>management.dashboard();$('finance-period').onchange=()=>management.finance();$('audit-period').onchange=()=>management.audit();$('audit-search').oninput=()=>management.audit();$('new-expense').onclick=()=>management.newExpense();$('export-commissions').onclick=()=>management.exportCommissions();$('menu-toggle').onclick=()=>{document.body.classList.add('menu-animated');const open=document.body.classList.toggle('menu-open');$('menu-toggle').setAttribute('aria-expanded',String(open));};$('nav-backdrop').onclick=closeMenu;$('export-orders').onclick=exportCsv;
 $('price-table').onchange=async e=>{const input=e.target.closest('[data-price]');if(!input)return;const item=state.catalog.find(i=>i.id===input.dataset.price),value=Number(input.value);if(!cloud?.isAdmin||!input.value.trim()||!Number.isFinite(value)||value<0||value>100000000){input.value=item[input.dataset.field];toast('Solo el administrador puede guardar tarifas válidas.');return;}input.disabled=true;try{const saved=await cloud.saveService({...item,[input.dataset.field]:Math.round(value*100)/100});item.cost=Number(saved.cost);item.price=Number(saved.price);persist();$('margin-'+item.id).textContent=euro(item.price-item.cost);renderServices();toast('Tarifa guardada para todo el taller.');}catch(error){input.value=item[input.dataset.field];toast(errorText(error));}finally{if(input.isConnected)input.disabled=false;}};
 $('restore-prices').onclick=()=>{if(!cloud?.isAdmin)return;confirmAction('Restaurar el tarifario original','Se recuperarán los 18 precios de tu tabla. Las órdenes registradas conservarán sus importes.',async()=>{let saved=0;try{for(const service of CATALOG){await cloud.saveService(service);saved++;}await cloud.load();renderPrices();toast('Tarifario original restaurado.');}catch(error){await cloud.load();renderPrices();throw Error(`${saved} tarifas restauradas. ${errorText(error)}`);}},'Restaurar tarifas');};
 $('mobile-ticket').onclick=()=>document.querySelector('.order-panel').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'instant':'smooth',block:'start'});
 document.addEventListener('keydown',e=>{if(cloud?.isActive&&e.key==='/'&&!$('modal').open&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();setView('calculator');$('service-search').focus();}});
 const hash=location.hash.slice(1);setView(['dashboard','calculator','orders','clients','catalog','summary'].includes(hash)?hash:'dashboard');
-try{cloud=new BennysCloud(cloudChanged);renderCloudStatus();}catch(error){connectionFailed=true;renderCloudStatus();$('auth-message').textContent=errorText(error);}
+try{cloud=new BennysCloud(cloudChanged);renderCloudStatus();}catch(error){connectionFailed=true;renderCloudStatus();authMessage(errorText(error),'error');}
 
 })();

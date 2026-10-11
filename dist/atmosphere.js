@@ -1,4 +1,5 @@
-// El ambiente se puede pausar sin afectar la sincronización ni las ventas.
+// El ambiente (niebla, brasas, murciélagos y el emblema 3D) se puede pausar sin afectar la sincronización ni las ventas.
+// La preferencia se guarda en este navegador; prefers-reduced-motion también lo detiene.
 export function initAtmosphere(){
   const preference=window.matchMedia('(prefers-reduced-motion: reduce)');
   const buttons=[...document.querySelectorAll('[data-ambient-toggle]')];
@@ -15,6 +16,8 @@ export function initAtmosphere(){
       const text=button.querySelector('[data-ambient-label]');
       if(text)text.textContent=preference.matches?'Movimiento reducido':stopped?'Activar ambiente':'Pausar ambiente';
     }
+    // Avisa al emblema 3D (carga diferida) y a cualquier otro efecto.
+    document.dispatchEvent(new CustomEvent('bennys:ambient',{detail:{paused:stopped}}));
   };
   for(const button of buttons)button.addEventListener('click',()=>{
     paused=!paused;
